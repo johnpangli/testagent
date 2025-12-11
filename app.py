@@ -256,7 +256,7 @@ if st.session_state.data_fetched:
                          summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
                     return "\n".join(summary)
 
-                # --- UPDATED PROMPT: STRICTLY TACTICAL ---
+                # --- UPDATED PROMPT: MECE OCCASIONS & SOCRATIC TACTICS ---
                 prompt = f"""
                 ACT AS: Chief Strategy Officer. 
                 CONTEXT: Analyzing '{TARGET_CATEGORY}' in '{TARGET_REGION}'.
@@ -268,27 +268,33 @@ if st.session_state.data_fetched:
                 - TRENDS: {st.session_state.trends_text}
                 
                 TASK: 
-                First, identify the single most relevant "Emerging Occasion" (e.g., "High-Protein Breakfast").
-                Then, provide a Gap Analysis and 3 specific tactical moves regarding Assortment, Distribution, and Pack Architecture.
+                1. Identify 3 DISTINCT, Mutually Exclusive, Collectively Exhaustive (MECE) Consumer Occasions relevant to this category/region (e.g., "The Morning Rush" vs "The Weekend Treat" vs "The Health Pivot").
+                2. For EACH occasion, analyze the gaps.
                 
                 RETURN JSON ONLY with these keys:
                 
-                1. "executive_summary": A 2-sentence BLUF (Bottom Line Up Front) summarizing the opportunity.
+                1. "executive_summary": A 2-sentence BLUF.
                 
-                2. "occasion_profile": {{"name": "Occasion Name", "rationale": "Why it fits trends/region"}}
+                2. "occasions_matrix": A list of 3 objects. Each object must have:
+                   - "occasion_name": Title.
+                   - "competitor_leader": Name of the specific competitor winning this occasion.
+                   - "competitor_tactic": What specifically are they doing? (e.g., "Oscar Mayer uses Family Packs").
+                   - "my_gap": What specifically am I missing? (e.g., "No Family Pack option").
+                   - "strategic_attribute": The key feature driving this occasion (e.g., "Convenience" or "Clean Label").
                 
-                3. "gap_analysis": A Markdown Table.
-                   - Columns: "Attribute", "Competitor Approach", "My Brand Gap".
-                   - Rows MUST include: "Pack Size/Architecture", "Distribution Channel Fit", "Flavor/Variety Assortment", "Key Claims".
+                3. "claims_strategy": {{"competitor_wins": "Specific claims they use", "my_gaps": "Claims I need"}}
+                
+                4. "tactical_questions": A list of 3 strings. 
+                   - DO NOT give advice. 
+                   - ASK "Hard Questions" regarding Assortment, Distribution, or Pack Architecture based on the data.
+                   - Example: "Given the 15% poverty rate, why are we prioritizing Whole Foods over Dollar General?"
                    
-                4. "claims_strategy": {{"competitor_wins": "Claims they use", "my_gaps": "Claims I need"}}
-                
-                5. "tactical_checklist": Markdown bullet points.
-                   - Pack Architecture: Compare specific sizes/formats (e.g., "Competitors use Family Packs, we need X").
-                   - Assortment/Distribution: Identify missing SKUs or channel gaps (e.g., "We lack a Spicy variant which is trending").
-                   - Trade/Promo: Suggest a trade strategy (e.g., "Competitors drive trial via BOGO, we should focus on X").
-                   
-                6. "ingredient_table": A technical Markdown table comparing specific ingredients (Oils, Sweeteners, Preservatives).
+                5. "ingredient_audit": A list of objects for a table.
+                   - "ingredient_type": (e.g., "Sweetener", "Preservative").
+                   - "my_brand": What I use.
+                   - "competitor_1": "Name: What they use".
+                   - "competitor_2": "Name: What they use".
+                   - "implication": "Why this matters for the occasion".
                    
                 RETURN JSON ONLY. NO MARKDOWN WRAPPERS.
                 """
@@ -305,18 +311,32 @@ if st.session_state.data_fetched:
                         end = txt.rfind('}') + 1
                         result = json.loads(txt[start:end])
 
-                    # --- DASHBOARD LAYOUT ---
+                    # --- DASHBOARD RENDER ---
+                    
+                    # 1. Executive Summary
                     st.markdown("## 📋 Executive Summary")
                     st.info(result.get("executive_summary", "No Data"))
                     
-                    st.subheader(f"🎯 Target Occasion: {result.get('occasion_profile', {}).get('name', 'N/A')}")
-                    st.caption(result.get('occasion_profile', {}).get('rationale', ''))
-                    
                     st.divider()
 
-                    st.subheader("📊 Strategic Gap Analysis")
-                    st.markdown(result.get("gap_analysis", "No Data"))
+                    # 2. MECE Occasion Matrix (Custom HTML for styling)
+                    st.subheader("📊 Strategic Occasion Matrix")
+                    
+                    occasions = result.get("occasions_matrix", [])
+                    if occasions:
+                        # Convert JSON to DataFrame for clean display
+                        occ_df = pd.DataFrame(occasions)
+                        # Rename for UI
+                        occ_df = occ_df.rename(columns={
+                            "occasion_name": "Occasion",
+                            "strategic_attribute": "Key Driver",
+                            "competitor_leader": "Winning Rival",
+                            "competitor_tactic": "Rival Approach",
+                            "my_gap": "My Strategic Gap"
+                        })
+                        st.table(occ_df) # Use st.table to avoid CSS coloring issues
 
+                    # 3. Claims & Questions
                     c1, c2 = st.columns(2)
                     with c1:
                         st.subheader("🏷️ Claims Strategy")
@@ -325,12 +345,21 @@ if st.session_state.data_fetched:
                         st.error(f"**Our Critical Gaps:** {claims.get('my_gaps', 'N/A')}")
                         
                     with c2:
-                        st.subheader("🛠️ Tactical Checklist (4 Ps)")
-                        st.markdown(result.get("tactical_checklist", "No Data"))
+                        st.subheader("❓ Tactical Interrogation")
+                        st.markdown("*(Answer these before your next review)*")
+                        questions = result.get("tactical_questions", [])
+                        for q in questions:
+                            st.warning(f"👉 {q}")
 
-                    with st.expander("🔬 Technical Ingredient Audit", expanded=False):
-                        st.markdown(result.get("ingredient_table", "No Data"))
+                    # 4. Technical Ingredient Audit (Specifics)
+                    st.divider()
+                    st.subheader("🔬 Technical Ingredient Audit")
+                    st.markdown("Direct comparison of formulation strategy vs. named competitors.")
+                    
+                    ing_audit = result.get("ingredient_audit", [])
+                    if ing_audit:
+                        ing_df = pd.DataFrame(ing_audit)
+                        st.table(ing_df)
 
                 except Exception as e:
                     st.error(f"Analysis Error: {e}")
-
