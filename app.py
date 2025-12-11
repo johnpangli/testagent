@@ -11,7 +11,7 @@ from census import Census
 import google.generativeai as genai
 from pypdf import PdfReader
 
-# --- 1. UI CONFIGURATION ---
+# --- 1. UI CONFIGURATION & CSS FIXES ---
 st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="🚀", layout="wide")
 
 st.markdown("""
@@ -19,8 +19,17 @@ st.markdown("""
     div.block-container {padding-top: 2rem;}
     .stButton>button { width: 100%; border-radius: 8px; font-weight: bold;}
     div[data-testid="stMetricValue"] {font-size: 24px;}
-    table {width: 100%;}
-    th {background-color: #f0f2f6; text-align: left;}
+    
+    /* --- TABLE STYLING FIX --- */
+    table {width: 100%; border-collapse: collapse;}
+    th {
+        background-color: #f0f2f6; 
+        color: #000000 !important; /* Forces black text for readability */
+        text-align: left;
+        padding: 10px;
+        font-weight: bold;
+    }
+    td { padding: 8px; border-bottom: 1px solid #ddd; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -34,32 +43,73 @@ if 'market_df' not in st.session_state:
 if 'trends_text' not in st.session_state:
     st.session_state.trends_text = ""
 
-# --- 3. SIDEBAR INPUTS ---
-with st.sidebar:
-    st.title("🤖 Strategy Agent")
-    st.caption("v2.2 // Bulletproof Logic")
-    st.markdown("---")
-    
-    # API Keys
-    with st.expander("🔑 API Keys", expanded=False):
-        default_gemini = st.secrets["GEMINI_API_KEY"] if "GEMINI_API_KEY" in st.secrets else ""
-        default_census = st.secrets["CENSUS_API_KEY"] if "CENSUS_API_KEY" in st.secrets else ""
-        GEMINI_API_KEY = st.text_input("Gemini Key", value=default_gemini, type="password")
-        CENSUS_API_KEY = st.text_input("Census Key", value=default_census, type="password")
+# --- 3. HELPER FUNCTIONS (AI JANITOR) ---
 
-    st.subheader("🎯 Parameters")
-    TARGET_REGION = st.selectbox("Target Region", ["Midwest", "Northeast", "South", "West", "USA"])
-    TARGET_CATEGORY = st.selectbox("Target Category", ["Bacon", "Peanut Butter", "Snack Nuts", "Coffee", "Cereal", "Beef Jerky", "Chips"])
-    
-    st.subheader("📂 Trend Context")
-    uploaded_files = st.file_uploader("Upload Trend PDFs", type=['pdf'], accept_multiple_files=True)
-    
-    if st.button("🚀 Run Analysis Engine", type="primary"):
-        st.session_state.trigger_fetch = True
-    else:
-        st.session_state.trigger_fetch = False
+def safe_json_parse(text):
+    """Robust JSON parser for LLM outputs"""
+    text = re.sub(r'```json\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'```', '', text)
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Aggressive cleanup
+        text = re.sub(r',\s*\}', '}', text)
+        text = re.sub(r',\s*\]', ']', text)
+        try:
+            return json.loads(text)
+        except:
+            return {}
 
-# --- 4. BACKEND LOGIC ---
+def ai_brand_cleaner(df, api_key):
+    """Uses Gemini to consolidate messy brand names."""
+    if df.empty or not api_key: return df
+    
+    # Configure local instance for this function
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.5-flash') # Use flash for speed
+    
+    unique_brands = df['brands'].dropna().unique().tolist()
+    if len(unique_brands) < 2: return df
+
+    # We process in chunks if there are too many brands to avoid token limits
+    # But for this demo, we'll try to do it in one pass or limit to top 50
+    if len(unique_brands) > 60:
+        unique_brands = unique_brands[:60] # Optimization for demo speed
+
+    prompt = f"""
+    You are a CPG Data Cleaning Expert. I have a messy list of food brands.
+    Merge variations (e.g., "KIRKLAND", "Kirkland Signature" -> "Kirkland Signature").
+    Merge "Wright", "Wright Brand" -> "Wright Brand".
+    
+    RAW LIST: {unique_brands}
+    
+    RETURN ONLY JSON (No markdown, No text):
+    {{
+        "brand_map": {{
+            "Messy Name 1": "Clean Name",
+            "Messy Name 2": "Clean Name"
+        }}
+    }}
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        mapping = safe_json_parse(response.text)
+        b_map = mapping.get('brand_map', {})
+        
+        # Apply mapping
+        df['brand_clean'] = df['brands'].apply(lambda x: b_map.get(x, x))
+        
+        # Final fallback cleanup for things the LLM might have missed or if list was truncated
+        df['brand_clean'] = df['brand_clean'].astype(str).str.title().str.strip()
+        return df
+    except Exception as e:
+        print(f"Janitor Failed: {e}")
+        df['brand_clean'] = df['brands'] # Fallback
+        return df
+
+# --- 4. DATA FETCHING LOGIC ---
 REGION_MAP = {
     "MIDWEST": ["IL", "OH", "MI", "IN", "WI", "MN", "MO"],
     "NORTHEAST": ["NY", "PA", "NJ", "MA"],
@@ -80,14 +130,17 @@ def get_demographics(api_key, region_input):
     target_states = [s for s in target_states if s]
     all_zips = []
     vars = ('B01003_001E', 'B19013_001E', 'B17001_002E', 'B17001_001E')
+    
     def fetch_wrapper(s):
         try: return c.acs5.state_zipcode(vars, s.fips, Census.ALL)
         except: return []
+        
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(fetch_wrapper, s): s for s in target_states}
         for future in as_completed(futures):
             res = future.result()
             if res: all_zips.extend(res)
+            
     if not all_zips: return None
     df = pd.DataFrame(all_zips)
     df = df.rename(columns={'zip code tabulation area': 'zip_code'})
@@ -99,91 +152,66 @@ def get_demographics(api_key, region_input):
     df = df[(df['income'] > 0) & (df['population'] > 1000)]
     return df.sort_values(['population'], ascending=False).head(15)
 
-def get_market_data(category_input):
+def get_market_data(category_input, gemini_key):
     human_category = category_input
     technical_tag = CATEGORY_MAP.get(human_category, human_category.lower().replace(" ", "-"))
-    
-    # 1. Keep the original World URL (It worked for you before)
     url = "https://world.openfoodfacts.org/cgi/search.pl"
-    
-    # 2. DEFINE HEADERS (Critical for Streamlit Cloud to not get blocked)
-    headers = {
-        'User-Agent': 'StrategicIntelligenceHub/1.0 (Streamlit; +https://streamlit.io)'
-    }
+    headers = {'User-Agent': 'StrategicIntelligenceHub/1.0 (Streamlit; +https://streamlit.io)'}
 
     all_products = []
-    
-    # --- STRATEGY A: CATEGORY SEARCH ---
-    # We use a placeholder for status to show progress in the UI
     status_text = st.empty()
     
+    # Fetch Loop
     for page in range(1, 4):
         status_text.text(f"🚜 Scouting Page {page} via Category Tag...")
-        
         params = {
-            "action": "process",
-            "tagtype_0": "categories",
-            "tag_contains_0": "contains",
-            "tag_0": technical_tag,
-            "json": "1",
-            "page_size": 100,
-            "page": page,
-            "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n",
-            "cc": "us", # Keep your original Country Code logic
-            "sort_by": "unique_scans_n"
+            "action": "process", "tagtype_0": "categories", "tag_contains_0": "contains",
+            "tag_0": technical_tag, "json": "1", "page_size": 100, "page": page,
+            "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n,last_updated_t",
+            "cc": "us", "sort_by": "unique_scans_n"
         }
-        
         try:
-            # Increased timeout to 20s (OFF is slow) & Added Headers
             r = requests.get(url, params=params, headers=headers, timeout=20)
             d = r.json().get('products', [])
             if not d: break
             all_products.extend(d)
-            
-            # CRITICAL: Put the sleep back! (Prevents blocking)
             time.sleep(1.0) 
-            
-        except Exception as e:
-            print(f"Error on page {page}: {e}")
-            break
+        except Exception: break
 
-    # --- STRATEGY B: FALLBACK KEYWORD SEARCH ---
+    # Fallback Loop
     if len(all_products) < 5:
         status_text.text("⚠️ Low results. Switching to Keyword Search...")
         for page in range(1, 4):
              params = {
-                 "action": "process",
-                 "search_terms": human_category,
-                 "json": "1",
-                 "page_size": 100,
-                 "page": page,
-                 "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n",
-                 "cc": "us",
-                 "sort_by": "unique_scans_n"
+                 "action": "process", "search_terms": human_category, "json": "1",
+                 "page_size": 100, "page": page,
+                 "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n,last_updated_t",
+                 "cc": "us", "sort_by": "unique_scans_n"
              }
              try:
                 r = requests.get(url, params=params, headers=headers, timeout=20)
                 d = r.json().get('products', [])
                 if not d: break
                 all_products.extend(d)
-                time.sleep(1.0) # CRITICAL
+                time.sleep(1.0)
              except: break
              
-    status_text.empty() # Clear the status message
-    
+    status_text.empty()
     df = pd.DataFrame(all_products)
     
     if not df.empty:
-        # Deduplicate
         df = df.drop_duplicates(subset=['product_name'])
-        
-        # Double check US filtering
         if 'countries_tags' in df.columns:
             df = df[df['countries_tags'].astype(str).str.contains('en:united-states|us', case=False, na=False)]
-
-        # Clean brands
-        df['brand_clean'] = df['brands'].astype(str).apply(lambda x: x.split(',')[0].strip())
-        df = df[~df['brand_clean'].isin(['nan', 'None', '', 'Unknown', 'null'])]
+        
+        # Clean basic empty brands first
+        df['brands'] = df['brands'].astype(str)
+        df = df[~df['brands'].isin(['nan', 'None', '', 'Unknown', 'null'])]
+        
+        # --- CALL AI JANITOR HERE ---
+        status_text.text("🧹 AI Janitor: Consolidating duplicate brands...")
+        df = ai_brand_cleaner(df, gemini_key)
+        status_text.empty()
         
     return df
 
@@ -197,10 +225,33 @@ def process_trends(files):
         except: pass
     return text[:15000]
 
-# --- 5. EXECUTION LOGIC ---
+# --- 5. SIDEBAR & EXECUTION ---
+with st.sidebar:
+    st.title("🤖 Strategy Agent")
+    st.caption("v2.3 // AI-Cleaned Data")
+    st.markdown("---")
+    
+    with st.expander("🔑 API Keys", expanded=False):
+        default_gemini = st.secrets["GEMINI_API_KEY"] if "GEMINI_API_KEY" in st.secrets else ""
+        default_census = st.secrets["CENSUS_API_KEY"] if "CENSUS_API_KEY" in st.secrets else ""
+        GEMINI_API_KEY = st.text_input("Gemini Key", value=default_gemini, type="password")
+        CENSUS_API_KEY = st.text_input("Census Key", value=default_census, type="password")
+
+    st.subheader("🎯 Parameters")
+    TARGET_REGION = st.selectbox("Target Region", ["Midwest", "Northeast", "South", "West", "USA"])
+    TARGET_CATEGORY = st.selectbox("Target Category", ["Bacon", "Peanut Butter", "Snack Nuts", "Coffee", "Cereal", "Beef Jerky", "Chips"])
+    
+    st.subheader("📂 Trend Context")
+    uploaded_files = st.file_uploader("Upload Trend PDFs", type=['pdf'], accept_multiple_files=True)
+    
+    if st.button("🚀 Run Analysis Engine", type="primary"):
+        st.session_state.trigger_fetch = True
+    else:
+        st.session_state.trigger_fetch = False
+
+# --- MAIN LOGIC ---
 st.title("🚀 Strategic Intelligence Hub")
 
-# A. Trigger Data Fetch
 if st.session_state.trigger_fetch:
     if not GEMINI_API_KEY or not CENSUS_API_KEY:
         st.error("❌ STOP: Please configure BOTH API Keys in the sidebar.")
@@ -209,8 +260,8 @@ if st.session_state.trigger_fetch:
             st.write("📍 Triangulating Census Demographics...")
             st.session_state.demographics_df = get_demographics(CENSUS_API_KEY, TARGET_REGION)
             
-            st.write(f"🛒 Scouting Market Data for '{TARGET_CATEGORY}'...")
-            st.session_state.market_df = get_market_data(TARGET_CATEGORY)
+            st.write(f"🛒 Scouting & Cleaning Market Data for '{TARGET_CATEGORY}'...")
+            st.session_state.market_df = get_market_data(TARGET_CATEGORY, GEMINI_API_KEY)
             
             st.write("📄 Ingesting Trend Reports...")
             st.session_state.trends_text = process_trends(uploaded_files)
@@ -218,15 +269,12 @@ if st.session_state.trigger_fetch:
             st.session_state.data_fetched = True
             status.update(label="✅ Data Acquisition Complete", state="complete", expanded=False)
 
-# B. Display Interface (With Diagnostics)
 if st.session_state.data_fetched:
-    # 1. DIAGNOSTIC CHECKS (Stop silent failures)
     if st.session_state.demographics_df is None or st.session_state.demographics_df.empty:
-        st.error(f"❌ Census Error: No data returned. Check API Key or Region '{TARGET_REGION}'.")
+        st.error(f"❌ Census Error: No data returned.")
     elif st.session_state.market_df is None or st.session_state.market_df.empty:
-        st.error(f"❌ Market Data Error: OpenFoodFacts returned 0 items for '{TARGET_CATEGORY}'. Try a broader category.")
+        st.error(f"❌ Market Data Error: No items found for '{TARGET_CATEGORY}'.")
     else:
-        # 2. RENDER DASHBOARD
         d_df = st.session_state.demographics_df
         m_df = st.session_state.market_df
         
@@ -235,6 +283,7 @@ if st.session_state.data_fetched:
         m1.metric("Avg Income", f"${d_df['income'].mean():,.0f}")
         m2.metric("Poverty Rate", f"{d_df['poverty_rate'].mean():.1f}%")
         
+        # --- NEW: Use Cleaned Brands ---
         brand_list = sorted(m_df['brand_clean'].unique().tolist())
         my_brand = m3.selectbox("Select Your Brand Focus:", brand_list)
 
@@ -243,7 +292,6 @@ if st.session_state.data_fetched:
         
         st.info(f"**Comparing:** {my_brand} vs {', '.join(top_movers)}")
 
-        # 3. GENERATE STRATEGY BUTTON
         if st.button("✨ Generate Strategic Directive", type="primary"):
             with st.spinner("🧠 Synthesizing Strategy..."):
                 genai.configure(api_key=GEMINI_API_KEY)
@@ -253,12 +301,14 @@ if st.session_state.data_fetched:
                     d = m_df[m_df['brand_clean'] == b_name].head(5)
                     summary = []
                     for _, r in d.iterrows():
-                         summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
+                          summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
                     return "\n".join(summary)
 
-                # --- UPDATED PROMPT: MECE OCCASIONS & SOCRATIC TACTICS ---
+                # --- UPDATED PROMPT: LESS AGGRESSIVE TITLES, MORE CONTEXT AWARENESS ---
                 prompt = f"""
                 ACT AS: Chief Strategy Officer. 
+                CONSTRAINTS: You are aware that the data sources are imperfect (OpenFoodFacts is user-generated, Trends are limited to provided PDFs).
+                
                 CONTEXT: Analyzing '{TARGET_CATEGORY}' in '{TARGET_REGION}'.
                 
                 DATA: 
@@ -268,7 +318,7 @@ if st.session_state.data_fetched:
                 - TRENDS: {st.session_state.trends_text}
                 
                 TASK: 
-                1. Identify 3 DISTINCT, Mutually Exclusive, Collectively Exhaustive (MECE) Consumer Occasions relevant to this category/region (e.g., "The Morning Rush" vs "The Weekend Treat" vs "The Health Pivot").
+                1. Identify 3 DISTINCT, Mutually Exclusive, Collectively Exhaustive (MECE) Consumer Occasions.
                 2. For EACH occasion, analyze the gaps.
                 
                 RETURN JSON ONLY with these keys:
@@ -278,25 +328,24 @@ if st.session_state.data_fetched:
                 2. "occasions_matrix": A list of 3 objects. Each object must have:
                    - "occasion_name": Title.
                    - "competitor_leader": Name of the specific competitor winning this occasion.
-                   - "competitor_tactic": What specifically are they doing? (e.g., "Oscar Mayer uses Family Packs").
-                   - "my_gap": What specifically am I missing? (e.g., "No Family Pack option").
-                   - "strategic_attribute": The key feature driving this occasion (e.g., "Convenience" or "Clean Label").
+                   - "competitor_tactic": What specifically are they doing?
+                   - "my_gap": What specifically am I missing?
+                   - "strategic_attribute": The key feature driving this occasion.
                 
                 3. "claims_strategy": {{"competitor_wins": "Specific claims they use", "my_gaps": "Claims I need"}}
                 
-                4. "tactical_questions": A list of 3 strings. 
-                   - DO NOT give advice. 
-                   - ASK "Hard Questions" regarding Assortment, Distribution, or Pack Architecture based on the data.
-                   - Example: "Given the 15% poverty rate, why are we prioritizing Whole Foods over Dollar General?"
+                4. "strategic_questions": A list of 3 strings. 
+                   - RENAME "Tactical Interrogation" to "Strategic Questions".
+                   - Ask difficult questions about Assortment or Pack Architecture based on the data.
                    
                 5. "ingredient_audit": A list of objects for a table.
                    - "ingredient_type": (e.g., "Sweetener", "Preservative").
                    - "my_brand": What I use.
                    - "competitor_1": "Name: What they use".
                    - "competitor_2": "Name: What they use".
-                   - "implication": "Why this matters for the occasion".
+                   - "implication": "Why this matters".
                    
-                RETURN JSON ONLY. NO MARKDOWN WRAPPERS.
+                RETURN JSON ONLY.
                 """
 
                 try:
@@ -304,39 +353,29 @@ if st.session_state.data_fetched:
                     txt = response.text.strip()
                     txt = re.sub(r'```json', '', txt, flags=re.IGNORECASE).replace('```', '').replace(',}', '}')
                     
-                    try:
-                        result = json.loads(txt)
-                    except:
+                    try: result = json.loads(txt)
+                    except: 
                         start = txt.find('{')
                         end = txt.rfind('}') + 1
                         result = json.loads(txt[start:end])
 
                     # --- DASHBOARD RENDER ---
                     
-                    # 1. Executive Summary
                     st.markdown("## 📋 Executive Summary")
                     st.info(result.get("executive_summary", "No Data"))
-                    
                     st.divider()
 
-                    # 2. MECE Occasion Matrix (Custom HTML for styling)
                     st.subheader("📊 Strategic Occasion Matrix")
-                    
                     occasions = result.get("occasions_matrix", [])
                     if occasions:
-                        # Convert JSON to DataFrame for clean display
                         occ_df = pd.DataFrame(occasions)
-                        # Rename for UI
                         occ_df = occ_df.rename(columns={
-                            "occasion_name": "Occasion",
-                            "strategic_attribute": "Key Driver",
-                            "competitor_leader": "Winning Rival",
-                            "competitor_tactic": "Rival Approach",
+                            "occasion_name": "Occasion", "strategic_attribute": "Key Driver",
+                            "competitor_leader": "Winning Rival", "competitor_tactic": "Rival Approach",
                             "my_gap": "My Strategic Gap"
                         })
-                        st.table(occ_df) # Use st.table to avoid CSS coloring issues
+                        st.write(occ_df.to_html(index=False), unsafe_allow_html=True) # HTML render for better CSS control
 
-                    # 3. Claims & Questions
                     c1, c2 = st.columns(2)
                     with c1:
                         st.subheader("🏷️ Claims Strategy")
@@ -345,21 +384,36 @@ if st.session_state.data_fetched:
                         st.error(f"**Our Critical Gaps:** {claims.get('my_gaps', 'N/A')}")
                         
                     with c2:
-                        st.subheader("❓ Tactical Interrogation")
-                        st.markdown("*(Answer these before your next review)*")
-                        questions = result.get("tactical_questions", [])
+                        st.subheader("🧐 Strategic Questions") # Renamed from Tactical Interrogation
+                        questions = result.get("strategic_questions", [])
                         for q in questions:
                             st.warning(f"👉 {q}")
 
-                    # 4. Technical Ingredient Audit (Specifics)
                     st.divider()
                     st.subheader("🔬 Technical Ingredient Audit")
-                    st.markdown("Direct comparison of formulation strategy vs. named competitors.")
-                    
                     ing_audit = result.get("ingredient_audit", [])
                     if ing_audit:
                         ing_df = pd.DataFrame(ing_audit)
-                        st.table(ing_df)
+                        st.write(ing_df.to_html(index=False), unsafe_allow_html=True)
 
                 except Exception as e:
                     st.error(f"Analysis Error: {e}")
+
+        # --- DATA REALITY CHECK (DISCLAIMER SECTION) ---
+        st.markdown("---")
+        with st.expander("🛡️ Data Reality Check & Methodology (Read Me)", expanded=False):
+            st.markdown("""
+            **About the Data Sources & Limitations:**
+            
+            1.  **Market Data (OpenFoodFacts):** This is an open-source, user-generated database (like Wikipedia for food). 
+                * *Risk:* Data may be incomplete, out of date, or contain duplicate user entries. 
+                * *Mitigation:* We run an **AI Janitor** process to merge brand names, but SKU counts should be treated as directional proxies, not absolute Nielsen/IRI numbers.
+            
+            2.  **Demographics (US Census):** Data is sourced from the ACS 5-Year Estimates.
+                * *Risk:* This data is highly accurate but trails real-time shifts by 1-2 years. It reflects the chosen Zip Codes, not specific shoppers in a specific store.
+            
+            3.  **Trend Context:** Analysis is limited strictly to the PDF files you upload.
+                * *Risk:* If no files are uploaded, the AI relies on its general training data (cutoff dates apply).
+                
+            *This tool is a Hypothesis Generator, not a Validation Engine. Always verify critical insights with POS data.*
+            """)
