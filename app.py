@@ -183,7 +183,7 @@ if st.session_state.data_fetched and st.session_state.demographics_df is not Non
     if st.button("✨ Generate Strategic Directive", type="primary"):
         with st.spinner("🧠 Synthesizing Strategy..."):
             genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-pro')
 
             def get_summary(b_name):
                 d = m_df[m_df['brand_clean'] == b_name].head(5)
@@ -222,6 +222,7 @@ if st.session_state.data_fetched and st.session_state.demographics_df is not Non
                 st.error(f"Error: {e}")
 elif st.session_state.data_fetched:
     st.warning("⚠️ No data found. Try a different Category or Region.")
+
 
 
 
