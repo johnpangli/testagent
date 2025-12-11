@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+requests
+us
+census
+google-generativeai
+pypdf
