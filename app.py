@@ -102,31 +102,89 @@ def get_demographics(api_key, region_input):
 def get_market_data(category_input):
     human_category = category_input
     technical_tag = CATEGORY_MAP.get(human_category, human_category.lower().replace(" ", "-"))
+    
+    # 1. Keep the original World URL (It worked for you before)
     url = "https://world.openfoodfacts.org/cgi/search.pl"
+    
+    # 2. DEFINE HEADERS (Critical for Streamlit Cloud to not get blocked)
+    headers = {
+        'User-Agent': 'StrategicIntelligenceHub/1.0 (Streamlit; +https://streamlit.io)'
+    }
+
     all_products = []
+    
+    # --- STRATEGY A: CATEGORY SEARCH ---
+    # We use a placeholder for status to show progress in the UI
+    status_text = st.empty()
+    
     for page in range(1, 4):
-        params = {"action": "process", "tagtype_0": "categories", "tag_contains_0": "contains", "tag_0": technical_tag, "json": "1", "page_size": 100, "page": page, "fields": "product_name,brands,ingredients_text,labels_tags,unique_scans_n", "cc": "us", "sort_by": "unique_scans_n"}
+        status_text.text(f"🚜 Scouting Page {page} via Category Tag...")
+        
+        params = {
+            "action": "process",
+            "tagtype_0": "categories",
+            "tag_contains_0": "contains",
+            "tag_0": technical_tag,
+            "json": "1",
+            "page_size": 100,
+            "page": page,
+            "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n",
+            "cc": "us", # Keep your original Country Code logic
+            "sort_by": "unique_scans_n"
+        }
+        
         try:
-            r = requests.get(url, params=params, timeout=10)
+            # Increased timeout to 20s (OFF is slow) & Added Headers
+            r = requests.get(url, params=params, headers=headers, timeout=20)
             d = r.json().get('products', [])
             if not d: break
             all_products.extend(d)
-        except: break
-    # Fallback Strategy
-    if len(all_products) < 10:
+            
+            # CRITICAL: Put the sleep back! (Prevents blocking)
+            time.sleep(1.0) 
+            
+        except Exception as e:
+            print(f"Error on page {page}: {e}")
+            break
+
+    # --- STRATEGY B: FALLBACK KEYWORD SEARCH ---
+    if len(all_products) < 5:
+        status_text.text("⚠️ Low results. Switching to Keyword Search...")
         for page in range(1, 4):
-             params = {"action": "process", "search_terms": human_category, "json": "1", "page_size": 100, "page": page, "fields": "product_name,brands,ingredients_text,labels_tags,unique_scans_n", "cc": "us"}
+             params = {
+                 "action": "process",
+                 "search_terms": human_category,
+                 "json": "1",
+                 "page_size": 100,
+                 "page": page,
+                 "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n",
+                 "cc": "us",
+                 "sort_by": "unique_scans_n"
+             }
              try:
-                r = requests.get(url, params=params, timeout=10)
+                r = requests.get(url, params=params, headers=headers, timeout=20)
                 d = r.json().get('products', [])
                 if not d: break
                 all_products.extend(d)
+                time.sleep(1.0) # CRITICAL
              except: break
+             
+    status_text.empty() # Clear the status message
+    
     df = pd.DataFrame(all_products)
+    
     if not df.empty:
+        # Deduplicate
+        df = df.drop_duplicates(subset=['product_name'])
+        
+        # Double check US filtering
+        if 'countries_tags' in df.columns:
+            df = df[df['countries_tags'].astype(str).str.contains('en:united-states|us', case=False, na=False)]
+
         # Clean brands
         df['brand_clean'] = df['brands'].astype(str).apply(lambda x: x.split(',')[0].strip())
-        df = df[~df['brand_clean'].isin(['nan', 'None', '', 'Unknown'])]
+        df = df[~df['brand_clean'].isin(['nan', 'None', '', 'Unknown', 'null'])]
+        
     return df
 
 def process_trends(files):
@@ -275,3 +333,4 @@ if st.session_state.data_fetched:
 
                 except Exception as e:
                     st.error(f"Analysis Error: {e}")
+
