@@ -142,10 +142,10 @@ def process_trends(files):
 # --- 5. EXECUTION LOGIC ---
 st.title("🚀 Strategic Intelligence Hub")
 
-# Trigger Data Fetch
+# A. Trigger Data Fetch
 if st.session_state.trigger_fetch:
     if not GEMINI_API_KEY or not CENSUS_API_KEY:
-        st.error("Please configure API Keys in the sidebar.")
+        st.error("❌ STOP: Please configure BOTH API Keys in the sidebar.")
     else:
         with st.status("⚙️ Agent Working...", expanded=True) as status:
             st.write("📍 Triangulating Census Demographics...")
@@ -160,132 +160,118 @@ if st.session_state.trigger_fetch:
             st.session_state.data_fetched = True
             status.update(label="✅ Data Acquisition Complete", state="complete", expanded=False)
 
-# Display Interface
-if st.session_state.data_fetched and st.session_state.demographics_df is not None and not st.session_state.market_df.empty:
-    
-    # Variables from state
-    d_df = st.session_state.demographics_df
-    m_df = st.session_state.market_df
-    
-    st.divider()
-    m1, m2, m3 = st.columns([1,1,2])
-    m1.metric("Avg Income", f"${d_df['income'].mean():,.0f}")
-    m2.metric("Poverty Rate", f"{d_df['poverty_rate'].mean():.1f}%")
-    
-    brand_list = sorted(m_df['brand_clean'].unique().tolist())
-    my_brand = m3.selectbox("Select Your Brand Focus:", brand_list)
+# B. Display Interface (With Diagnostics)
+if st.session_state.data_fetched:
+    # 1. DIAGNOSTIC CHECKS (Stop silent failures)
+    if st.session_state.demographics_df is None or st.session_state.demographics_df.empty:
+        st.error(f"❌ Census Error: No data returned. Check API Key or Region '{TARGET_REGION}'.")
+    elif st.session_state.market_df is None or st.session_state.market_df.empty:
+        st.error(f"❌ Market Data Error: OpenFoodFacts returned 0 items for '{TARGET_CATEGORY}'. Try a broader category.")
+    else:
+        # 2. RENDER DASHBOARD
+        d_df = st.session_state.demographics_df
+        m_df = st.session_state.market_df
+        
+        st.divider()
+        m1, m2, m3 = st.columns([1,1,2])
+        m1.metric("Avg Income", f"${d_df['income'].mean():,.0f}")
+        m2.metric("Poverty Rate", f"{d_df['poverty_rate'].mean():.1f}%")
+        
+        brand_list = sorted(m_df['brand_clean'].unique().tolist())
+        my_brand = m3.selectbox("Select Your Brand Focus:", brand_list)
 
-    comp_df = m_df[m_df['brand_clean'] != my_brand]
-    top_movers = comp_df.groupby('brand_clean')['unique_scans_n'].sum().sort_values(ascending=False).head(5).index.tolist() if not comp_df.empty else []
-    
-    st.info(f"**Comparing:** {my_brand} vs {', '.join(top_movers)}")
+        comp_df = m_df[m_df['brand_clean'] != my_brand]
+        top_movers = comp_df.groupby('brand_clean')['unique_scans_n'].sum().sort_values(ascending=False).head(5).index.tolist() if not comp_df.empty else []
+        
+        st.info(f"**Comparing:** {my_brand} vs {', '.join(top_movers)}")
 
-    # ... [Previous code remains the same] ...
+        # 3. GENERATE STRATEGY BUTTON
+        if st.button("✨ Generate Strategic Directive", type="primary"):
+            with st.spinner("🧠 Synthesizing Strategy..."):
+                genai.configure(api_key=GEMINI_API_KEY)
+                model = genai.GenerativeModel('gemini-2.5-pro')
 
-    if st.button("✨ Generate Strategic Directive", type="primary"):
-        with st.spinner("🧠 Synthesizing Strategy..."):
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel('gemini-2.5-pro')
+                def get_summary(b_name):
+                    d = m_df[m_df['brand_clean'] == b_name].head(5)
+                    summary = []
+                    for _, r in d.iterrows():
+                         summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
+                    return "\n".join(summary)
 
-            def get_summary(b_name):
-                d = m_df[m_df['brand_clean'] == b_name].head(5)
-                summary = []
-                for _, r in d.iterrows():
-                        # Added stronger emphasis on Claims (labels_tags)
-                        summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
-                return "\n".join(summary)
-
-            # --- UPDATED PROMPT: OCCASION-CENTRIC ---
-            prompt = f"""
-            ACT AS: Chief Strategy Officer. 
-            CONTEXT: Analyzing '{TARGET_CATEGORY}' in '{TARGET_REGION}'.
-            
-            DATA: 
-            - Demographics: Income ${d_df['income'].mean():,.0f}, Poverty {d_df['poverty_rate'].mean():.1f}%
-            - MY BRAND: {my_brand} (Items: {get_summary(my_brand)})
-            - COMPETITORS: {top_movers} (Items: {chr(10).join([get_summary(c) for c in top_movers])})
-            - TRENDS: {st.session_state.trends_text}
-            
-            TASK: 
-            First, identify the single most relevant "Emerging Occasion" based on the trends and region (e.g., "Low-Mess Protein Snacking", "Affordable Family Breakfast"). 
-            Then, anchor all analysis to this occasion.
-            
-            RETURN JSON ONLY with these keys:
-            
-            1. "executive_summary": A 2-sentence "Bottom Line Up Front". Summarize the Occasion and the primary gap.
-            
-            2. "occasion_profile": 
-               - "name": Name of the occasion.
-               - "why_trending": Why this matters now (reference trends).
-            
-            3. "gap_analysis": A Markdown Table.
-               - Compare My Brand vs Competitors.
-               - Columns: "Pack Architecture (Size/Format)", "Key Claims", "Primary Ingredients".
-               - Rows should show WHAT IS MISSING in my brand to meet the Occasion.
-               
-            4. "claims_strategy": A specific analysis of Claims/Certifications.
-               - "competitor_wins": What claims are competitors using that fit the occasion?
-               - "my_gaps": What claims am I missing? (e.g., "Missing 'No Sugar Added'").
-               
-            5. "tactical_checklist": Markdown bullet points.
-               - Pack Architecture: "Competitors have X format for this occasion, we only have Y."
-               - Assortment Check: "Dataset is incomplete, but check if we carry [Specific Flavor/Variant] to match the occasion."
-               - Ingredient Pivot: "Reformulate to remove X or add Y to align with the occasion."
-               - NOTE: Do NOT mention specific prices. Focus on format/size.
-               
-            6. "ingredient_table": A technical Markdown table comparing specific ingredients (Oils, Sweeteners, Preservatives).
-               
-            RETURN JSON ONLY. NO MARKDOWN WRAPPERS around the JSON.
-            """
-
-            try:
-                response = model.generate_content(prompt)
-                txt = response.text.strip()
-                # Robust cleaning
-                txt = re.sub(r'```json', '', txt, flags=re.IGNORECASE)
-                txt = re.sub(r'```', '', txt)
-                txt = re.sub(r',\s*\}', '}', txt)
+                # --- UPDATED PROMPT: STRICTLY TACTICAL ---
+                prompt = f"""
+                ACT AS: Chief Strategy Officer. 
+                CONTEXT: Analyzing '{TARGET_CATEGORY}' in '{TARGET_REGION}'.
                 
+                DATA: 
+                - Demographics: Income ${d_df['income'].mean():,.0f}, Poverty {d_df['poverty_rate'].mean():.1f}%
+                - MY BRAND: {my_brand} (Items: {get_summary(my_brand)})
+                - COMPETITORS: {top_movers} (Items: {chr(10).join([get_summary(c) for c in top_movers])})
+                - TRENDS: {st.session_state.trends_text}
+                
+                TASK: 
+                First, identify the single most relevant "Emerging Occasion" (e.g., "High-Protein Breakfast").
+                Then, provide a Gap Analysis and 3 specific tactical moves regarding Assortment, Distribution, and Pack Architecture.
+                
+                RETURN JSON ONLY with these keys:
+                
+                1. "executive_summary": A 2-sentence BLUF (Bottom Line Up Front) summarizing the opportunity.
+                
+                2. "occasion_profile": {{"name": "Occasion Name", "rationale": "Why it fits trends/region"}}
+                
+                3. "gap_analysis": A Markdown Table.
+                   - Columns: "Attribute", "Competitor Approach", "My Brand Gap".
+                   - Rows MUST include: "Pack Size/Architecture", "Distribution Channel Fit", "Flavor/Variety Assortment", "Key Claims".
+                   
+                4. "claims_strategy": {{"competitor_wins": "Claims they use", "my_gaps": "Claims I need"}}
+                
+                5. "tactical_checklist": Markdown bullet points.
+                   - Pack Architecture: Compare specific sizes/formats (e.g., "Competitors use Family Packs, we need X").
+                   - Assortment/Distribution: Identify missing SKUs or channel gaps (e.g., "We lack a Spicy variant which is trending").
+                   - Trade/Promo: Suggest a trade strategy (e.g., "Competitors drive trial via BOGO, we should focus on X").
+                   
+                6. "ingredient_table": A technical Markdown table comparing specific ingredients (Oils, Sweeteners, Preservatives).
+                   
+                RETURN JSON ONLY. NO MARKDOWN WRAPPERS.
+                """
+
                 try:
-                    result = json.loads(txt)
-                except:
-                    start = txt.find('{')
-                    end = txt.rfind('}') + 1
-                    result = json.loads(txt[start:end])
-
-                # --- NEW LAYOUT: EXECUTIVE SUMMARY FIRST ---
-                
-                # 1. Executive Summary (The "BLUF")
-                st.markdown("## 📋 Executive Summary")
-                st.info(result.get("executive_summary", "No Data"))
-                
-                # 2. The Occasion
-                st.subheader(f"🎯 Target Occasion: {result.get('occasion_profile', {}).get('name', 'N/A')}")
-                st.markdown(f"*{result.get('occasion_profile', {}).get('why_trending', '')}*")
-                
-                st.divider()
-
-                # 3. Gap Analysis (Visual)
-                st.subheader("📊 Occasion Gap Analysis")
-                st.markdown(result.get("gap_analysis", "No Data"))
-
-                # 4. Claims & Tactics (Split View)
-                c1, c2 = st.columns(2)
-                
-                with c1:
-                    st.subheader("🏷️ Claims Strategy")
-                    claims = result.get("claims_strategy", {})
-                    st.success(f"**Competitors Winning On:** {claims.get('competitor_wins', 'N/A')}")
-                    st.error(f"**Our Critical Gaps:** {claims.get('my_gaps', 'N/A')}")
+                    response = model.generate_content(prompt)
+                    txt = response.text.strip()
+                    txt = re.sub(r'```json', '', txt, flags=re.IGNORECASE).replace('```', '').replace(',}', '}')
                     
-                with c2:
-                    st.subheader("🛠️ Tactical Checklist")
-                    st.markdown(result.get("tactical_checklist", "No Data"))
+                    try:
+                        result = json.loads(txt)
+                    except:
+                        start = txt.find('{')
+                        end = txt.rfind('}') + 1
+                        result = json.loads(txt[start:end])
 
-                # 5. Technical Table
-                with st.expander("🔬 Technical Ingredient Audit", expanded=False):
-                    st.markdown(result.get("ingredient_table", "No Data"))
+                    # --- DASHBOARD LAYOUT ---
+                    st.markdown("## 📋 Executive Summary")
+                    st.info(result.get("executive_summary", "No Data"))
+                    
+                    st.subheader(f"🎯 Target Occasion: {result.get('occasion_profile', {}).get('name', 'N/A')}")
+                    st.caption(result.get('occasion_profile', {}).get('rationale', ''))
+                    
+                    st.divider()
 
-            except Exception as e:
-                st.error(f"Analysis Error: {e}")
-                st.write(response.text if 'response' in locals() else "No response")
+                    st.subheader("📊 Strategic Gap Analysis")
+                    st.markdown(result.get("gap_analysis", "No Data"))
+
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.subheader("🏷️ Claims Strategy")
+                        claims = result.get("claims_strategy", {})
+                        st.success(f"**Competitors Winning On:** {claims.get('competitor_wins', 'N/A')}")
+                        st.error(f"**Our Critical Gaps:** {claims.get('my_gaps', 'N/A')}")
+                        
+                    with c2:
+                        st.subheader("🛠️ Tactical Checklist (4 Ps)")
+                        st.markdown(result.get("tactical_checklist", "No Data"))
+
+                    with st.expander("🔬 Technical Ingredient Audit", expanded=False):
+                        st.markdown(result.get("ingredient_table", "No Data"))
+
+                except Exception as e:
+                    st.error(f"Analysis Error: {e}")
