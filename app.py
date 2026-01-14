@@ -16,10 +16,10 @@ st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="📊", la
 
 st.markdown("""
     <style>
-    /* Global */
-    div.block-container {padding-top: 1.5rem; max-width: 1400px;}
+    /* Global Container */
+    div.block-container {padding-top: 1.5rem; max-width: 100%;}
     
-    /* Professional Color Scheme */
+    /* Professional Color Palette */
     :root {
         --primary-blue: #1e3a8a;
         --accent-blue: #3b82f6;
@@ -28,191 +28,129 @@ st.markdown("""
         --text-dark: #1e293b;
     }
     
-    /* Buttons */
-    .stButton>button { 
+    /* The Red Button Styling */
+    div.stButton > button:first-child[kind="primary"] {
+        background-color: #dc2626 !important;
+        border-color: #dc2626 !important;
+        color: white !important;
         width: 100%; 
         border-radius: 6px; 
-        font-weight: 600;
-        padding: 0.6rem 1rem;
-        transition: all 0.2s;
+        font-weight: 700;
+        padding: 0.8rem 1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
     }
+
     .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(220, 38, 38, 0.3);
     }
     
-    /* Metrics */
+    /* Metrics Dashboard */
     div[data-testid="stMetricValue"] {
-        font-size: 28px;
-        font-weight: 700;
+        font-size: 26px;
+        font-weight: 800;
         color: var(--primary-blue);
     }
     
-    /* Tables */
+    /* Professional Tables */
     table {
         width: 100%; 
         border-collapse: collapse;
-        font-size: 14px;
+        font-size: 13px;
         background: white;
-        border-radius: 8px;
+        border-radius: 10px;
         overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-top: 10px;
     }
     th {
         background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         color: white !important;
         text-align: left;
-        padding: 12px 16px;
+        padding: 12px 15px;
         font-weight: 600;
         text-transform: uppercase;
-        font-size: 12px;
-        letter-spacing: 0.5px;
+        font-size: 11px;
     }
     td { 
-        padding: 12px 16px; 
+        padding: 12px 15px; 
         border-bottom: 1px solid var(--border-gray);
-        color: var(--text-dark);
-    }
-    tr:last-child td {
-        border-bottom: none;
-    }
-    tr:hover {
-        background-color: var(--light-gray);
     }
     
-    /* Cards */
+    /* Insight Cards for AI Output */
     .insight-card {
         background: white;
-        border-radius: 8px;
-        padding: 20px;
-        margin: 12px 0;
-        border-left: 4px solid var(--accent-blue);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        border-radius: 12px;
+        padding: 24px;
+        margin: 15px 0;
+        border-left: 6px solid var(--accent-blue);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     
     .insight-card h4 {
         color: var(--primary-blue);
-        margin-bottom: 8px;
-        font-size: 16px;
-        font-weight: 600;
+        margin-top: 0;
+        font-size: 18px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
     }
     
-    .insight-card p {
-        color: var(--text-dark);
-        line-height: 1.6;
-        margin: 0;
-    }
-    
-    /* Section Headers */
     .section-header {
         background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         color: white;
-        padding: 16px 24px;
+        padding: 14px 24px;
         border-radius: 8px;
-        margin: 24px 0 16px 0;
+        margin: 25px 0 15px 0;
         font-size: 18px;
-        font-weight: 600;
-        box-shadow: 0 2px 8px rgba(30, 58, 138, 0.15);
-    }
-    
-    /* Checkboxes */
-    .stCheckbox {
-        padding: 8px 0;
-    }
-    
-    /* Expanders */
-    .streamlit-expanderHeader {
-        font-weight: 600;
-        color: var(--primary-blue);
-    }
-    
-    /* Remove excessive spacing */
-    .element-container {
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Info/Warning/Error boxes */
-    .stAlert {
-        border-radius: 6px;
-        border-left-width: 4px;
+        font-weight: 700;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SESSION STATE SETUP ---
-if 'data_fetched' not in st.session_state:
-    st.session_state.data_fetched = False
-if 'demographics_df' not in st.session_state:
-    st.session_state.demographics_df = None
-if 'market_df' not in st.session_state:
-    st.session_state.market_df = None
-if 'trends_text' not in st.session_state:
-    st.session_state.trends_text = ""
-if 'selected_brand' not in st.session_state:
-    st.session_state.selected_brand = None
+# --- 2. SESSION STATE MANAGEMENT ---
+if 'data_fetched' not in st.session_state: st.session_state.data_fetched = False
+if 'analysis_generated' not in st.session_state: st.session_state.analysis_generated = False
+if 'demographics_df' not in st.session_state: st.session_state.demographics_df = None
+if 'market_df' not in st.session_state: st.session_state.market_df = None
+if 'trends_text' not in st.session_state: st.session_state.trends_text = ""
+if 'result_json' not in st.session_state: st.session_state.result_json = None
 
-# --- 3. HELPER FUNCTIONS ---
+# --- 3. REUSABLE UTILITIES ---
 
 def safe_json_parse(text):
-    """Robust JSON parser for LLM outputs"""
+    """Parses JSON even if LLM includes markdown wrappers or trailing commas."""
     text = re.sub(r'```json\s*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'```', '', text)
-    text = text.strip()
+    text = re.sub(r'```', '', text).strip()
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
-        text = re.sub(r',\s*\}', '}', text)
-        text = re.sub(r',\s*\]', ']', text)
+    except:
         try:
+            # Handle common LLM formatting errors
+            text = re.sub(r',\s*\}', '}', text)
+            text = re.sub(r',\s*\]', ']', text)
             return json.loads(text)
         except:
             return {}
 
 def ai_brand_cleaner(df, api_key):
-    """Uses Gemini to consolidate messy brand names."""
-    if df.empty or not api_key: 
-        return df
-    
+    """Uses Gemini to unify fragmented brand names (e.g., 'KRAFT' vs 'Kraft Foods')."""
+    if df.empty or not api_key: return df
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    
-    unique_brands = df['brands'].dropna().unique().tolist()
-    if len(unique_brands) < 2: 
-        return df
-
-    if len(unique_brands) > 60:
-        unique_brands = unique_brands[:60]
-
-    prompt = f"""
-    You are a CPG Data Cleaning Expert. I have a messy list of food brands.
-    Merge variations (e.g., "KIRKLAND", "Kirkland Signature" -> "Kirkland Signature").
-    Merge "Wright", "Wright Brand" -> "Wright Brand".
-    
-    RAW LIST: {unique_brands}
-    
-    RETURN ONLY JSON (No markdown, No text):
-    {{
-        "brand_map": {{
-            "Messy Name 1": "Clean Name",
-            "Messy Name 2": "Clean Name"
-        }}
-    }}
-    """
-    
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    unique_brands = df['brands'].dropna().unique().tolist()[:60]
+    prompt = f"Clean this list of CPG brands. Group variations into one official name. Return JSON ONLY: {{'brand_map': {{'Messy': 'Clean'}} }}. List: {unique_brands}"
     try:
         response = model.generate_content(prompt)
-        mapping = safe_json_parse(response.text)
-        b_map = mapping.get('brand_map', {})
-        
-        df['brand_clean'] = df['brands'].apply(lambda x: b_map.get(x, x))
-        df['brand_clean'] = df['brand_clean'].astype(str).str.title().str.strip()
+        mapping = safe_json_parse(response.text).get('brand_map', {})
+        df['brand_clean'] = df['brands'].apply(lambda x: mapping.get(x, x)).astype(str).str.title().str.strip()
         return df
-    except Exception as e:
-        print(f"Janitor Failed: {e}")
+    except:
         df['brand_clean'] = df['brands']
         return df
 
-# --- 4. DATA FETCHING LOGIC ---
+# --- 4. DATA PIPELINES ---
+
 REGION_MAP = {
     "Midwest": ["IL", "OH", "MI", "IN", "WI", "MN", "MO"],
     "Northeast": ["NY", "PA", "NJ", "MA", "CT", "ME", "NH", "VT", "RI"],
@@ -222,445 +160,211 @@ REGION_MAP = {
 }
 
 CATEGORY_MAP = {
-    "Bacon": "bacons", 
-    "Peanut Butter": "peanut-butters", 
-    "Snack Nuts": "nuts", 
-    "Beef Jerky": "meat-snacks", 
-    "Coffee": "coffees", 
-    "Cereal": "breakfast-cereals", 
-    "Chips": "chips"
+    "Bacon": "bacons", "Peanut Butter": "peanut-butters", "Snack Nuts": "nuts", 
+    "Beef Jerky": "meat-snacks", "Coffee": "coffees", "Cereal": "breakfast-cereals", "Chips": "chips"
 }
 
 def get_demographics(api_key, region_input):
-    """Fetch census data with FIXED case-sensitive region lookup"""
-    if not api_key: 
-        return None
-    
+    """Fetches high-depth Census data including Age, Households, and Poverty."""
+    if not api_key: return None
     c = Census(api_key)
-    
-    # FIX: Use exact case from REGION_MAP keys
     state_codes = REGION_MAP.get(region_input, [region_input.upper()])
+    target_states = [us.states.lookup(s) for s in state_codes if us.states.lookup(s)]
     
-    # Convert state codes to state objects
-    target_states = []
-    for s in state_codes:
-        state_obj = us.states.lookup(s)
-        if state_obj:
-            target_states.append(state_obj)
+    if not target_states: return None
     
-    if not target_states:
-        return None
+    # B01003_001E: Pop | B19013_001E: Income | B17001_002E: Poverty | B01002_001E: Age
+    # B11001_001E: Total HH | B11001_002E: Family HH
+    vars = ('B01003_001E', 'B19013_001E', 'B17001_002E', 'B17001_001E', 'B01002_001E', 'B11001_001E', 'B11001_002E')
     
     all_zips = []
-    vars = ('B01003_001E', 'B19013_001E', 'B17001_002E', 'B17001_001E')
-    
-    def fetch_wrapper(state):
-        try: 
-            return c.acs5.state_zipcode(vars, state.fips, Census.ALL)
-        except Exception as e:
-            print(f"Error fetching {state.abbr}: {e}")
-            return []
+    def fetch_task(state):
+        try: return c.acs5.state_zipcode(vars, state.fips, Census.ALL)
+        except: return []
         
     with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(fetch_wrapper, s): s for s in target_states}
-        for future in as_completed(futures):
-            res = future.result()
-            if res: 
-                all_zips.extend(res)
+        futures = {executor.submit(fetch_task, s): s for s in target_states}
+        for f in as_completed(futures):
+            res = f.result()
+            if res: all_zips.extend(res)
             
-    if not all_zips: 
-        return None
-        
-    df = pd.DataFrame(all_zips)
-    df = df.rename(columns={'zip code tabulation area': 'zip_code'})
+    if not all_zips: return None
+    df = pd.DataFrame(all_zips).rename(columns={'zip code tabulation area': 'zip_code'})
+    
+    # Process Metrics
     df['population'] = pd.to_numeric(df['B01003_001E'], errors='coerce')
     df['income'] = pd.to_numeric(df['B19013_001E'], errors='coerce')
-    poverty_num = pd.to_numeric(df['B17001_002E'], errors='coerce')
-    poverty_denom = pd.to_numeric(df['B17001_001E'], errors='coerce')
-    df['poverty_rate'] = (poverty_num / poverty_denom.replace(0, 1)) * 100
-    df = df[(df['income'] > 0) & (df['population'] > 1000)]
+    df['median_age'] = pd.to_numeric(df['B01002_001E'], errors='coerce')
     
-    return df.sort_values(['population'], ascending=False).head(20)
+    total_hh = pd.to_numeric(df['B11001_001E'], errors='coerce').replace(0, 1)
+    fam_hh = pd.to_numeric(df['B11001_002E'], errors='coerce')
+    df['family_pct'] = (fam_hh / total_hh) * 100
+    df['single_pct'] = 100 - df['family_pct']
+    
+    poverty_n = pd.to_numeric(df['B17001_002E'], errors='coerce')
+    poverty_d = pd.to_numeric(df['B17001_001E'], errors='coerce').replace(0, 1)
+    df['poverty_rate'] = (poverty_n / poverty_d) * 100
+    
+    return df[(df['income'] > 0) & (df['population'] > 1000)].sort_values(['population'], ascending=False).head(20)
 
-def get_market_data(category_input, gemini_key):
-    """Fetch and clean market data from OpenFoodFacts"""
-    human_category = category_input
-    technical_tag = CATEGORY_MAP.get(human_category, human_category.lower().replace(" ", "-"))
+def get_market_data(cat_input, gemini_key):
+    """Pulls product-level data from OpenFoodFacts."""
+    tech_tag = CATEGORY_MAP.get(cat_input, cat_input.lower().replace(" ", "-"))
     url = "https://world.openfoodfacts.org/cgi/search.pl"
-    headers = {'User-Agent': 'StrategicIntelligenceHub/1.0 (Streamlit; +https://streamlit.io)'}
-
-    all_products = []
-    status_text = st.empty()
-    
+    all_prods = []
     for page in range(1, 4):
-        status_text.text(f"Fetching page {page}...")
-        params = {
-            "action": "process", 
-            "tagtype_0": "categories", 
-            "tag_contains_0": "contains",
-            "tag_0": technical_tag, 
-            "json": "1", 
-            "page_size": 100, 
-            "page": page,
-            "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n,last_updated_t",
-            "cc": "us", 
-            "sort_by": "unique_scans_n"
-        }
+        p = {"action": "process", "tagtype_0": "categories", "tag_contains_0": "contains", "tag_0": tech_tag, 
+             "json": "1", "page_size": 100, "page": page, "cc": "us",
+             "fields": "product_name,brands,ingredients_text,labels_tags,unique_scans_n"}
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=20)
+            r = requests.get(url, params=p, timeout=15)
             d = r.json().get('products', [])
-            if not d: 
-                break
-            all_products.extend(d)
-            time.sleep(1.0) 
-        except Exception: 
-            break
-
-    if len(all_products) < 5:
-        status_text.text("Switching to keyword search...")
-        for page in range(1, 4):
-            params = {
-                "action": "process", 
-                "search_terms": human_category, 
-                "json": "1",
-                "page_size": 100, 
-                "page": page,
-                "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n,last_updated_t",
-                "cc": "us", 
-                "sort_by": "unique_scans_n"
-            }
-            try:
-                r = requests.get(url, params=params, headers=headers, timeout=20)
-                d = r.json().get('products', [])
-                if not d: 
-                    break
-                all_products.extend(d)
-                time.sleep(1.0)
-            except: 
-                break
-             
-    status_text.empty()
-    df = pd.DataFrame(all_products)
-    
+            if not d: break
+            all_prods.extend(d)
+        except: break
+    df = pd.DataFrame(all_prods)
     if not df.empty:
         df = df.drop_duplicates(subset=['product_name'])
-        if 'countries_tags' in df.columns:
-            df = df[df['countries_tags'].astype(str).str.contains('en:united-states|us', case=False, na=False)]
-        
-        df['brands'] = df['brands'].astype(str)
-        df = df[~df['brands'].isin(['nan', 'None', '', 'Unknown', 'null'])]
-        
-        status_text.text("Cleaning brand names with AI...")
         df = ai_brand_cleaner(df, gemini_key)
-        status_text.empty()
-        
     return df
 
 def process_trends(files):
-    """Extract text from uploaded PDF files"""
-    if not files: 
-        return "No specific trend PDF files provided. Use general knowledge."
+    """Extracts text from uploaded PDF intelligence reports."""
+    if not files: return "General market knowledge."
     text = ""
     for f in files:
         try:
             reader = PdfReader(f)
-            text += "".join([page.extract_text() for page in reader.pages[:3]])
-        except: 
-            pass
+            text += "".join([p.extract_text() for p in reader.pages[:3]])
+        except: pass
     return text[:15000]
 
-# --- 5. SIDEBAR CONFIGURATION ---
+# --- 5. SIDEBAR & DATA ORCHESTRATION ---
 with st.sidebar:
-    st.markdown("### Configuration Panel")
-    st.caption("Strategic Intelligence Hub v3.0")
+    st.header("Hub Configuration")
+    GEM_KEY = st.text_input("Gemini API Key", type="password")
+    CEN_KEY = st.text_input("Census API Key", type="password")
     st.markdown("---")
+    SEL_REGION = st.selectbox("Market Region", list(REGION_MAP.keys()))
+    SEL_CAT = st.selectbox("Category", list(CATEGORY_MAP.keys()))
+    PDFS = st.file_uploader("Intelligence Files", type=['pdf'], accept_multiple_files=True)
     
-    with st.expander("🔐 API Credentials", expanded=False):
-        default_gemini = st.secrets.get("GEMINI_API_KEY", "")
-        default_census = st.secrets.get("CENSUS_API_KEY", "")
-        GEMINI_API_KEY = st.text_input("Gemini API Key", value=default_gemini, type="password")
-        CENSUS_API_KEY = st.text_input("Census API Key", value=default_census, type="password")
+    if st.button("▶ Start Intelligence Collection", use_container_width=True):
+        if not GEM_KEY or not CEN_KEY:
+            st.warning("Please provide API Keys.")
+        else:
+            with st.status("Gathering Intelligence...", expanded=True) as status:
+                st.write("Fetching Demographics (Age, Income, HH Type)...")
+                st.session_state.demographics_df = get_demographics(CEN_KEY, SEL_REGION)
+                st.write("Scraping Market Landscape...")
+                st.session_state.market_df = get_market_data(SEL_CAT, GEM_KEY)
+                st.write("Parsing PDFs...")
+                st.session_state.trends_text = process_trends(PDFS)
+                st.session_state.data_fetched = True
+                st.session_state.analysis_generated = False
+                status.update(label="Collection Complete", state="complete")
 
-    st.markdown("### Analysis Parameters")
-    TARGET_REGION = st.selectbox(
-        "Geographic Region", 
-        ["Midwest", "Northeast", "South", "West", "USA"],
-        help="Select the target market region for demographic analysis"
-    )
-    
-    TARGET_CATEGORY = st.selectbox(
-        "Product Category", 
-        ["Bacon", "Peanut Butter", "Snack Nuts", "Coffee", "Cereal", "Beef Jerky", "Chips"],
-        help="Select the product category to analyze"
-    )
-    
-    st.markdown("### Trend Intelligence")
-    uploaded_files = st.file_uploader(
-        "Upload Trend Reports (PDF)", 
-        type=['pdf'], 
-        accept_multiple_files=True,
-        help="Optional: Upload industry trend reports for contextualized analysis"
-    )
-    
-    st.markdown("---")
-    
-    if st.button("▶ Run Data Collection", type="primary", use_container_width=True):
-        st.session_state.trigger_fetch = True
-    else:
-        st.session_state.trigger_fetch = False
-
-# --- 6. MAIN APPLICATION ---
+# --- 6. AGENTIC DASHBOARD ---
 st.title("Strategic Intelligence Hub")
-st.caption("Enterprise-Grade Market Analysis & Competitive Intelligence")
+st.caption("AI-Powered CPG Market & Demographic Disruption Analysis")
 
-if st.session_state.trigger_fetch:
-    if not GEMINI_API_KEY or not CENSUS_API_KEY:
-        st.error("⚠ Configuration Required: Please provide both API keys in the sidebar.")
+if not st.session_state.data_fetched:
+    st.info("Input credentials and parameters in the sidebar to begin.")
+else:
+    d_df = st.session_state.demographics_df
+    m_df = st.session_state.market_df
+
+    # --- THE DYNAMIC LAYOUT SHIFT ---
+    if st.session_state.analysis_generated:
+        left_pane, right_report = st.columns([1, 2.8], gap="large")
     else:
-        with st.status("Processing data collection workflow...", expanded=True) as status:
-            st.write("→ Collecting demographic data from US Census Bureau...")
-            st.session_state.demographics_df = get_demographics(CENSUS_API_KEY, TARGET_REGION)
+        left_pane = st.container()
+        right_report = None
+
+    with left_pane:
+        # Market Overview Module
+        st.markdown('<div class="section-header">Demographic Context</div>', unsafe_allow_html=True)
+        met1, met2 = st.columns(2)
+        met1.metric("Avg Income", f"${d_df['income'].mean():,.0f}")
+        met2.metric("Median Age", f"{d_df['median_age'].mean():.1f}")
+        
+        met3, met4 = st.columns(2)
+        met3.metric("% Family HH", f"{d_df['family_pct'].mean():.1f}%")
+        met4.metric("% Single HH", f"{d_df['single_pct'].mean():.1f}%")
+        
+        st.metric("Total Population Base", f"{d_df['population'].sum():,.0f}")
+
+        # Strategy Selection Module
+        st.markdown('<div class="section-header">Strategic Parameters</div>', unsafe_allow_html=True)
+        brand_opts = sorted(m_df['brand_clean'].unique().tolist())
+        target_brand = st.selectbox("Select Target Brand", brand_opts)
+        
+        st.markdown("**Select Analysis Modules**")
+        run_occ = st.checkbox("Occasion Matrix", value=True)
+        run_clm = st.checkbox("Positioning Strategy", value=True)
+        run_qst = st.checkbox("Leadership Interrogation", value=True)
+        run_ing = st.checkbox("Technical Ingredient Audit", value=False)
+        
+        # THE RED BUTTON
+        if st.button("▶ Generate Strategic Analysis", type="primary"):
+            with st.spinner("Agent computing disruption report..."):
+                genai.configure(api_key=GEM_KEY)
+                agent = genai.GenerativeModel('gemini-1.5-pro')
+                
+                comp_set = m_df[m_df['brand_clean']!=target_brand].groupby('brand_clean')['unique_scans_n'].sum().sort_values(ascending=False).head(3).index.tolist()
+                
+                prompt = f"""
+                ROLE: Chief Strategy Officer. 
+                REGION: {SEL_REGION} | CATEGORY: {SEL_CAT} | BRAND: {target_brand}
+                
+                DEMOGRAPHICS:
+                - Avg Age: {d_df['median_age'].mean():.1f}
+                - Household Mix: {d_df['family_pct'].mean():.1f}% Family / {d_df['single_pct'].mean():.1f}% Single-person.
+                - Affordability: {d_df['poverty_rate'].mean():.1f}% Poverty Rate.
+                
+                TASK: Generate a high-stakes JSON strategy report. 
+                Ensure the 'occasions_matrix' maps specific consumer life-stages (based on age/household data) to packaging needs.
+                Include 'executive_summary', 'occasions_matrix' (list), 'claims_strategy', 'strategic_questions'.
+                """
+                try:
+                    resp = agent.generate_content(prompt)
+                    st.session_state.result_json = safe_json_parse(resp.text)
+                    st.session_state.analysis_generated = True
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Agent Fault: {err}")
+
+    # --- THE GENERATED REPORT PANEL ---
+    if st.session_state.analysis_generated and right_report:
+        with right_report:
+            data = st.session_state.result_json
+            st.markdown('<div class="section-header">Executive Strategic Intelligence</div>', unsafe_allow_html=True)
             
-            st.write(f"→ Gathering market intelligence for {TARGET_CATEGORY}...")
-            st.session_state.market_df = get_market_data(TARGET_CATEGORY, GEMINI_API_KEY)
+            st.markdown(f"""
+            <div class="insight-card">
+                <h4>Strategic Summary</h4>
+                <p>{data.get("executive_summary", "Strategic data compiled.")}</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            st.write("→ Processing trend documentation...")
-            st.session_state.trends_text = process_trends(uploaded_files)
+            if "occasions_matrix" in data:
+                st.subheader("Disruption Occasion Matrix")
+                o_df = pd.DataFrame(data["occasions_matrix"])
+                st.write(o_df.to_html(index=False, escape=False), unsafe_allow_html=True)
             
-            st.session_state.data_fetched = True
-            status.update(label="✓ Data collection complete", state="complete", expanded=False)
-
-# --- 7. ANALYSIS DASHBOARD ---
-if st.session_state.data_fetched:
-    if st.session_state.demographics_df is None or st.session_state.demographics_df.empty:
-        st.error(f"⚠ Data Collection Failed: Unable to retrieve census data for {TARGET_REGION}. Please verify API key and region selection.")
-    elif st.session_state.market_df is None or st.session_state.market_df.empty:
-        st.error(f"⚠ Data Collection Failed: No market data found for {TARGET_CATEGORY}.")
-    else:
-        d_df = st.session_state.demographics_df
-        m_df = st.session_state.market_df
-        
-        # --- MARKET OVERVIEW SECTION ---
-        st.markdown('<div class="section-header">Market Overview</div>', unsafe_allow_html=True)
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                "Avg Household Income", 
-                f"${d_df['income'].mean():,.0f}",
-                help="Average median household income across target ZIP codes"
-            )
-        
-        with col2:
-            st.metric(
-                "Poverty Rate", 
-                f"{d_df['poverty_rate'].mean():.1f}%",
-                help="Average poverty rate across target demographics"
-            )
-        
-        with col3:
-            st.metric(
-                "Total Population", 
-                f"{d_df['population'].sum():,.0f}",
-                help="Total population in analyzed ZIP codes"
-            )
-        
-        with col4:
-            st.metric(
-                "Brands Analyzed", 
-                f"{m_df['brand_clean'].nunique()}",
-                help="Number of unique brands in competitive set"
-            )
-        
-        st.markdown("---")
-        
-        # --- BRAND SELECTION ---
-        st.markdown('<div class="section-header">Competitive Analysis Setup</div>', unsafe_allow_html=True)
-        
-        brand_list = sorted(m_df['brand_clean'].unique().tolist())
-        
-        col_a, col_b = st.columns([2, 1])
-        
-        with col_a:
-            my_brand = st.selectbox(
-                "Select Your Brand", 
-                brand_list,
-                help="Choose your brand for competitive positioning analysis"
-            )
-            st.session_state.selected_brand = my_brand
-        
-        with col_b:
-            st.markdown("**Competitive Set**")
-            comp_df = m_df[m_df['brand_clean'] != my_brand]
-            top_movers = comp_df.groupby('brand_clean')['unique_scans_n'].sum().sort_values(ascending=False).head(5).index.tolist() if not comp_df.empty else []
-            if top_movers:
-                st.info(", ".join(top_movers))
-            else:
-                st.warning("Insufficient competitor data")
-        
-        st.markdown("---")
-        
-        # --- ANALYSIS MODULE SELECTION ---
-        st.markdown('<div class="section-header">Analysis Modules</div>', unsafe_allow_html=True)
-        st.caption("Select the strategic analyses you want to generate")
-        
-        col_check1, col_check2 = st.columns(2)
-        
-        with col_check1:
-            run_occasions = st.checkbox("**Strategic Occasion Matrix**", value=True, help="Identify distinct consumer occasions and competitive gaps")
-            run_claims = st.checkbox("**Claims & Positioning Strategy**", value=True, help="Analyze competitive claims and positioning opportunities")
-        
-        with col_check2:
-            run_questions = st.checkbox("**Strategic Interrogation**", value=True, help="Generate critical questions for strategy refinement")
-            run_ingredients = st.checkbox("**Technical Ingredient Audit**", value=False, help="Deep-dive ingredient comparison vs. competitors")
-        
-        st.markdown("---")
-        
-        # --- GENERATE ANALYSIS ---
-        if st.button("▶ Generate Strategic Analysis", type="primary", use_container_width=True):
-            if not any([run_occasions, run_claims, run_questions, run_ingredients]):
-                st.warning("Please select at least one analysis module.")
-            else:
-                with st.spinner("Generating strategic intelligence..."):
-                    genai.configure(api_key=GEMINI_API_KEY)
-                    model = genai.GenerativeModel('gemini-2.5-pro')
-
-                    def get_summary(b_name):
-                        d = m_df[m_df['brand_clean'] == b_name].head(5)
-                        summary = []
-                        for _, r in d.iterrows():
-                            summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
-                        return "\n".join(summary)
-
-                    # Build dynamic prompt based on selected modules
-                    modules_requested = []
-                    if run_occasions:
-                        modules_requested.append('"occasions_matrix": A list of 3 objects with: occasion_name, competitor_leader, competitor_tactic, my_gap, strategic_attribute')
-                    if run_claims:
-                        modules_requested.append('"claims_strategy": {"competitor_wins": "...", "my_gaps": "..."}')
-                    if run_questions:
-                        modules_requested.append('"strategic_questions": A list of 3 strings asking difficult questions')
-                    if run_ingredients:
-                        modules_requested.append('"ingredient_audit": A list of objects with: ingredient_type, my_brand, competitor_1, competitor_2, implication')
-
-                    prompt = f"""
-                    ACT AS: Chief Strategy Officer for a Fortune 500 CPG Company.
-                    CONSTRAINTS: Data sources are imperfect (OpenFoodFacts is user-generated, trends are limited to provided PDFs).
-                    
-                    CONTEXT: Analyzing '{TARGET_CATEGORY}' in '{TARGET_REGION}'.
-                    
-                    DATA: 
-                    - Demographics: Income ${d_df['income'].mean():,.0f}, Poverty {d_df['poverty_rate'].mean():.1f}%
-                    - MY BRAND: {my_brand} (Items: {get_summary(my_brand)})
-                    - COMPETITORS: {top_movers} (Items: {chr(10).join([get_summary(c) for c in top_movers])})
-                    - TRENDS: {st.session_state.trends_text}
-                    
-                    TASK: Generate ONLY the following modules requested:
-                    {chr(10).join(modules_requested)}
-                    
-                    ALSO ALWAYS INCLUDE:
-                    "executive_summary": A 2-3 sentence executive summary.
-                    
-                    RETURN ONLY VALID JSON with the requested keys. No markdown, no preamble.
-                    """
-
-                    try:
-                        response = model.generate_content(prompt)
-                        txt = response.text.strip()
-                        txt = re.sub(r'```json', '', txt, flags=re.IGNORECASE).replace('```', '').replace(',}', '}')
-                        
-                        try: 
-                            result = json.loads(txt)
-                        except: 
-                            start = txt.find('{')
-                            end = txt.rfind('}') + 1
-                            result = json.loads(txt[start:end])
-
-                        # --- RENDER RESULTS ---
-                        st.markdown('<div class="section-header">Strategic Intelligence Report</div>', unsafe_allow_html=True)
-                        
-                        # Executive Summary
-                        exec_summary = result.get("executive_summary", "Analysis complete.")
-                        st.markdown(f'<div class="insight-card"><h4>Executive Summary</h4><p>{exec_summary}</p></div>', unsafe_allow_html=True)
-                        
-                        # Occasions Matrix
-                        if run_occasions and "occasions_matrix" in result:
-                            st.markdown("### Strategic Occasion Matrix")
-                            st.caption("Mutually exclusive consumer occasions and competitive positioning")
-                            occasions = result.get("occasions_matrix", [])
-                            if occasions:
-                                occ_df = pd.DataFrame(occasions)
-                                occ_df = occ_df.rename(columns={
-                                    "occasion_name": "Occasion",
-                                    "strategic_attribute": "Key Driver",
-                                    "competitor_leader": "Leading Competitor",
-                                    "competitor_tactic": "Competitive Approach",
-                                    "my_gap": "Strategic Gap"
-                                })
-                                st.write(occ_df.to_html(index=False, escape=False), unsafe_allow_html=True)
-                            st.markdown("---")
-                        
-                        # Claims Strategy
-                        if run_claims and "claims_strategy" in result:
-                            st.markdown("### Claims & Positioning Strategy")
-                            claims = result.get("claims_strategy", {})
-                            
-                            col_claim1, col_claim2 = st.columns(2)
-                            
-                            with col_claim1:
-                                st.markdown(f'<div class="insight-card"><h4>Competitor Strengths</h4><p>{claims.get("competitor_wins", "N/A")}</p></div>', unsafe_allow_html=True)
-                            
-                            with col_claim2:
-                                st.markdown(f'<div class="insight-card"><h4>Our Opportunity Gaps</h4><p>{claims.get("my_gaps", "N/A")}</p></div>', unsafe_allow_html=True)
-                            
-                            st.markdown("---")
-                        
-                        # Strategic Questions
-                        if run_questions and "strategic_questions" in result:
-                            st.markdown("### Strategic Interrogation")
-                            st.caption("Critical questions for leadership consideration")
-                            questions = result.get("strategic_questions", [])
-                            for i, q in enumerate(questions, 1):
-                                st.markdown(f'<div class="insight-card"><h4>Question {i}</h4><p>{q}</p></div>', unsafe_allow_html=True)
-                            st.markdown("---")
-                        
-                        # Ingredient Audit
-                        if run_ingredients and "ingredient_audit" in result:
-                            st.markdown("### Technical Ingredient Audit")
-                            st.caption("Comparative formulation analysis")
-                            ing_audit = result.get("ingredient_audit", [])
-                            if ing_audit:
-                                ing_df = pd.DataFrame(ing_audit)
-                                st.write(ing_df.to_html(index=False, escape=False), unsafe_allow_html=True)
-
-                    except Exception as e:
-                        st.error(f"Analysis generation failed: {str(e)}")
-                        st.exception(e)
-
-        # --- DATA QUALITY DISCLAIMER ---
-        st.markdown("---")
-        with st.expander("📋 Data Sources & Methodology", expanded=False):
-            st.markdown("""
-            #### Data Quality & Limitations
+            if "claims_strategy" in data:
+                st.markdown(f"""
+                <div class="insight-card">
+                    <h4>Claim & Positioning Delta</h4>
+                    <p>{str(data["claims_strategy"])}</p>
+                </div>
+                """, unsafe_allow_html=True)
             
-            **Market Intelligence (OpenFoodFacts)**
-            - Open-source, user-generated database
-            - May contain incomplete, outdated, or duplicate entries
-            - AI brand consolidation applied, but treat SKU counts as directional
-            - Not a substitute for syndicated POS data (Nielsen/IRI)
-            
-            **Demographics (US Census Bureau)**
-            - Source: American Community Survey (ACS) 5-Year Estimates
-            - High accuracy but lags real-time by 1-2 years
-            - Reflects selected ZIP codes, not specific retail shopper profiles
-            
-            **Trend Context**
-            - Analysis limited to uploaded PDF documents
-            - If no files uploaded, relies on model's general training data
-            
-            **Intended Use**
-            - This tool generates strategic hypotheses for further investigation
-            - Always validate critical insights with primary POS/panel data
-            - Recommended for opportunity identification, not final decision-making
-            """)
+            if "strategic_questions" in data:
+                st.subheader("Critical Interrogations for Leadership")
+                for q in data["strategic_questions"]:
+                    st.warning(f"**Question:** {q}")
+
+# --- 7. FOOTER ---
+st.markdown("---")
+st.caption("Strategic Intelligence Hub | Built for Enterprise Strategy | Data: US Census ACS & OpenFoodFacts")
