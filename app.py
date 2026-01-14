@@ -242,31 +242,61 @@ RETURN JSON ONLY:
 # =============================================================================
 # 3B) AI-LED ENTITY TYPING: branded vs private_label vs unknown (LOCKED TO 3-FLASH)
 # =============================================================================
+def _safe_response_text(resp) -> str:
+    """
+    Extract text from google.generativeai response reliably.
+    Some responses have candidates but no text Parts, so resp.text fails.
+    """
+    # Try quick accessor first
+    try:
+        t = (resp.text or "").strip()
+        if t:
+            return t
+    except Exception:
+        pass
+
+    # Fallback: walk candidates → content → parts
+    try:
+        texts = []
+        for c in getattr(resp, "candidates", []) or []:
+            content = getattr(c, "content", None)
+            parts = getattr(content, "parts", None) if content else None
+            if parts:
+                for p in parts:
+                    pt = getattr(p, "text", None)
+                    if pt:
+                        texts.append(pt)
+        return "\n".join(texts).strip()
+    except Exception:
+        return ""
+
 def classify_entity_types(parent_companies, sample_products_by_parent, api_key):
     """
     AI classifier: parent_company -> entity_type (branded/private_label/unknown)
     Uses parent name + a few sample SKUs as evidence.
+    Robust to empty/no-text responses from Gemini.
     """
     if not parent_companies or not api_key:
         return {}
 
-    # Keep prompt small
     parent_companies = parent_companies[:90]
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3-flash-preview")  # keep it fast/cheap
+    model = genai.GenerativeModel("gemini-3-flash-preview")
 
     evidence_lines = []
     for p in parent_companies:
         samples = (sample_products_by_parent.get(p, []) or [])[:3]
-        sample_txt = " | ".join([str(s.get("product_name", "")).strip() for s in samples if s.get("product_name")])[:240]
+        sample_txt = " | ".join(
+            [str(s.get("product_name", "")).strip() for s in samples if s.get("product_name")]
+        )[:240]
         evidence_lines.append(f"- {p} :: samples: {sample_txt}")
 
     prompt = f"""
 ACT AS: CPG + Retailer Brand Data Specialist.
 TASK: Classify each entity as one of:
-- "private_label": retailer-owned / store brand / house brand (e.g., Kirkland, Great Value, 365, Trader Joe's, retailer parent)
-- "branded": manufacturer/CPG owner brand (e.g., Blue Diamond Growers, Kraft Heinz, Hormel, etc.)
+- "private_label": retailer-owned / store brand / house brand (incl. retailer corporate parent)
+- "branded": manufacturer/CPG owner brand
 - "unknown": not enough info; do not guess
 
 RULES:
@@ -285,17 +315,41 @@ RETURN JSON ONLY:
   ]
 }}
 """
-    try:
-        resp = model.generate_content(prompt)
-        txt = re.sub(r"```json\s?|```", "", resp.text).strip()
-        data = json.loads(txt)
-        out = {}
-        for row in data.get("entity_types", []):
-            out[row.get("parent_company")] = row.get("entity_type", "unknown")
-        return out
-    except Exception as e:
-        st.error(f"Entity type classification failed: {e}")
-        return {}
+
+    # Retry because Gemini sometimes returns a candidate with no text parts
+    for attempt in range(1, 4):
+        try:
+            resp = model.generate_content(prompt)
+            txt = _safe_response_text(resp)
+
+            if not txt:
+                time.sleep(0.8 * attempt)
+                continue
+
+            txt = re.sub(r"```json\s?|```", "", txt).strip()
+            data = json.loads(txt)
+
+            out = {}
+            for row in data.get("entity_types", []):
+                pc = row.get("parent_company")
+                et = row.get("entity_type", "unknown")
+                if pc:
+                    out[pc] = et
+
+            # If JSON parsed but empty, treat as retry-worthy
+            if not out:
+                time.sleep(0.8 * attempt)
+                continue
+
+            return out
+
+        except Exception:
+            time.sleep(0.8 * attempt)
+            continue
+
+    # Hard fallback: keep app usable
+    return {p: "unknown" for p in parent_companies}
+
 
 
 # =============================================================================
@@ -1045,4 +1099,5 @@ tile_row("mdm", "Entity normalization", "Validate mappings before presenting", t
 
 # Optional: questions tile (if you want a 7th)
 # tile_row("questions", "Strategic questions", "Hard questions to pressure-test moves", questions[:3])
+
 
