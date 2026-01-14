@@ -6,99 +6,157 @@ import time
 import json
 import re
 import us
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from census import Census
 import google.generativeai as genai
 from pypdf import PdfReader
 
 # =============================================================================
-# 1) UI CONFIGURATION & PROFESSIONAL STYLING
+# 1) PAGE CONFIG + "GOOGLE/APPLE" CLEAN UI
 # =============================================================================
-st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="◼", layout="wide")
 
 st.markdown("""
-    <style>
-    div.block-container {padding-top: 1.5rem; max-width: 1400px;}
-    :root {
-        --primary-blue: #1e3a8a;
-        --accent-blue: #3b82f6;
-        --text-dark: #1e293b;
-    }
-    .stButton>button { 
-        width: 100%; border-radius: 8px; font-weight: 600;
-        padding: 0.6rem 1rem; transition: all 0.2s;
-    }
-    .section-header {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-        color: white; padding: 16px 24px; border-radius: 8px;
-        margin: 24px 0 16px 0; font-size: 18px; font-weight: 600;
-    }
-    /* TABLE STYLING FIX */
-    table {width: 100%; border-collapse: collapse;}
-    th {
-        background-color: #f0f2f6; 
-        color: #000000 !important;
-        text-align: left;
-        padding: 10px;
-        font-weight: bold;
-    }
-    td { padding: 8px; border-bottom: 1px solid #ddd; }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+/* ---------- Layout / Typography ---------- */
+div.block-container { padding-top: 1.25rem; max-width: 1400px; }
+html, body, [class*="css"] { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+
+h1, h2, h3, h4 { letter-spacing: -0.02em; }
+h1 { font-size: 28px !important; margin-bottom: 0.25rem; }
+h2 { font-size: 18px !important; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+h3 { font-size: 15px !important; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+
+.small-muted { color: #64748b; font-size: 12px; line-height: 1.35; }
+.kpi-note { color: #64748b; font-size: 11px; }
+
+/* ---------- Buttons ---------- */
+.stButton>button {
+  width: 100%;
+  border-radius: 10px;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid #e2e8f0;
+}
+.stButton>button:hover { border-color: #cbd5e1; }
+
+/* ---------- Section header ---------- */
+.section-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+  color: white;
+  padding: 14px 18px;
+  border-radius: 14px;
+  margin: 18px 0 14px 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Tiles (Quadrants) ---------- */
+.tile {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 16px 14px 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+  min-height: 230px;
+}
+.tile-title { font-size: 14px; font-weight: 750; color: #0f172a; margin-bottom: 4px; }
+.tile-sub { font-size: 12px; color: #64748b; margin-bottom: 10px; }
+.tile-bullets { font-size: 13px; color: #0f172a; line-height: 1.35; }
+.tile-bullets div { margin: 7px 0; }
+.tile-footer { margin-top: 12px; display: flex; gap: 8px; }
+
+/* ---------- Tables (clean) ---------- */
+table { width: 100%; border-collapse: collapse; }
+th {
+  background-color: #f8fafc;
+  color: #0f172a !important;
+  text-align: left;
+  padding: 10px;
+  font-weight: 700;
+  border-bottom: 1px solid #e2e8f0;
+}
+td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+
+/* ---------- Expander styling (subtle) ---------- */
+details summary {
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f172a;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # =============================================================================
-# 2) SESSION STATE MANAGEMENT
+# 2) SESSION STATE
 # =============================================================================
-if 'data_fetched' not in st.session_state:
+if "data_fetched" not in st.session_state:
     st.session_state.data_fetched = False
-if 'market_df' not in st.session_state:
+if "market_df" not in st.session_state:
     st.session_state.market_df = None
-if 'demographics_df' not in st.session_state:
+if "demographics_df" not in st.session_state:
     st.session_state.demographics_df = None
-if 'trends_text' not in st.session_state:
+if "trends_text" not in st.session_state:
     st.session_state.trends_text = ""
 
+# UI/Flow state
+if "active_panel" not in st.session_state:
+    st.session_state.active_panel = None  # "market" | "occasions" | "claims" | "ingredients"
+if "directive_result" not in st.session_state:
+    st.session_state.directive_result = None
+if "ui_locked" not in st.session_state:
+    st.session_state.ui_locked = False
+
+# Persist selections after lock
+if "sel_region" not in st.session_state:
+    st.session_state.sel_region = "Midwest"
+if "sel_category" not in st.session_state:
+    st.session_state.sel_category = "Snack Nuts"
+if "sel_focus" not in st.session_state:
+    st.session_state.sel_focus = None
+if "sel_competitors" not in st.session_state:
+    st.session_state.sel_competitors = []
+
 # =============================================================================
-# 3) THE "ULTIMATE PARENT" MDM LOGIC (LOCKED TO GEMINI-3-FLASH-PREVIEW)
+# 3) MDM ENTITY RESOLUTION (LOCKED TO GEMINI-3-FLASH-PREVIEW)
 # =============================================================================
 def get_canonical_parent_map(messy_brands, api_key):
-    """
-    Consolidates messy brand strings into Ultimate Corporate Parents.
-    Model locked to: gemini-3-flash-preview
-    """
     if not messy_brands or not api_key:
         return {}
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3-flash-preview')  # MANDATORY MODEL LOCK
+    model = genai.GenerativeModel("gemini-3-flash-preview")  # LOCKED
 
     prompt = f"""
 ACT AS: Enterprise Master Data Management (MDM) Specialist for a CPG Firm.
 TASK: Clean this list of messy brand strings and map them to their ONE true Parent Company.
 
-LOGIC RULES:
-1. CONSOLIDATE VARIATIONS: "Blue Diamond", "Blue Diamond Almonds", "Blue Diamond Growers" -> "Blue Diamond Growers".
-2. RESOLVE PARENTS: "Wright", "Wright Brand", "Wright Foods" -> "Tyson Foods".
-3. RETAILER BRANDS: "365", "Whole Foods", "365 Everyday Value" -> "Amazon/Whole Foods".
-4. PRIVATE LABEL: "Great Value" -> "Walmart", "Kirkland" -> "Costco".
-5. HIERARCHY: Always aim for the ultimate corporate owner (e.g., Hormel, Kraft Heinz, General Mills).
+RULES:
+1) CONSOLIDATE VARIATIONS: "Blue Diamond", "Blue Diamond Almonds", "Blue Diamond Growers" -> "Blue Diamond Growers".
+2) RESOLVE PARENTS: "Wright", "Wright Brand", "Wright Foods" -> "Tyson Foods".
+3) RETAILER BRANDS: "365", "Whole Foods", "365 Everyday Value" -> "Amazon/Whole Foods".
+4) PRIVATE LABEL: "Great Value" -> "Walmart", "Kirkland" -> "Costco".
+5) HIERARCHY: Always aim for the ultimate corporate owner.
 
-LIST TO RESOLVE:
+LIST:
 {messy_brands}
 
-RETURN ONLY VALID JSON OBJECT (No markdown, no text):
+RETURN JSON ONLY:
 {{
   "Mapping": [
-    {{"raw": "Messy Name", "canonical_parent": "Clean Parent Company"}},
-    ...
+    {{"raw": "Messy Name", "canonical_parent": "Clean Parent Company"}}
   ]
 }}
 """
     try:
         response = model.generate_content(prompt)
-        clean_json = re.sub(r'```json\s?|```', '', response.text).strip()
+        clean_json = re.sub(r"```json\s?|```", "", response.text).strip()
         data = json.loads(clean_json)
-        return {item['raw']: item['canonical_parent'] for item in data.get('Mapping', [])}
+        return {item["raw"]: item["canonical_parent"] for item in data.get("Mapping", [])}
     except Exception as e:
         st.error(f"MDM Engine Error: {e}")
         return {b: b for b in messy_brands}
@@ -111,7 +169,7 @@ REGION_MAP = {
     "Northeast": ["NY", "PA", "NJ", "MA"],
     "South": ["TX", "FL", "GA", "NC", "VA"],
     "West": ["CA", "WA", "AZ", "CO"],
-    "USA": ["CA", "TX", "FL", "NY", "IL", "PA", "OH"]
+    "USA": ["CA", "TX", "FL", "NY", "IL", "PA", "OH"],
 }
 
 CATEGORY_MAP = {
@@ -121,18 +179,17 @@ CATEGORY_MAP = {
     "Beef Jerky": "meat-snacks",
     "Coffee": "coffees",
     "Cereal": "breakfast-cereals",
-    "Chips": "chips"
+    "Chips": "chips",
 }
 
-def fetch_market_intelligence(category, api_key):
+def fetch_market_intelligence(category, gemini_key):
     tech_tag = CATEGORY_MAP.get(category, category.lower())
-    headers = {'User-Agent': 'StrategicIntelligenceHub/2.0'}
+    headers = {"User-Agent": "StrategicIntelligenceHub/3.0"}
     all_products = []
-
     status_text = st.empty()
 
     for page in range(1, 6):
-        status_text.text(f"🚜 Scouting Page {page} via Category Tag...")
+        status_text.text(f"Scanning products · page {page}")
         url = (
             "https://world.openfoodfacts.org/cgi/search.pl?"
             "action=process"
@@ -144,11 +201,11 @@ def fetch_market_intelligence(category, api_key):
         )
         try:
             r = requests.get(url, headers=headers, timeout=15)
-            products = r.json().get('products', [])
+            products = r.json().get("products", [])
             if not products:
                 break
             all_products.extend(products)
-            time.sleep(0.5)
+            time.sleep(0.45)
         except:
             break
 
@@ -157,25 +214,27 @@ def fetch_market_intelligence(category, api_key):
     if df.empty:
         return df
 
-    df['brands'] = df['brands'].astype(str).str.strip().str.strip(',')
-    df = df[~df['brands'].isin(['nan', 'None', '', 'Unknown', 'null'])]
-    df = df.drop_duplicates(subset=['product_name'])
+    df["brands"] = df["brands"].astype(str).str.strip().str.strip(",")
+    df = df[~df["brands"].isin(["nan", "None", "", "Unknown", "null"])]
+    df = df.drop_duplicates(subset=["product_name"])
 
-    # Run the "Ultimate Parent" Cleaner (Gemini-3-Flash-Preview)
-    unique_messy = df['brands'].unique().tolist()
-    with st.spinner(f"AI Entity Resolution: Consolidating {len(unique_messy)} brands..."):
-        parent_map = get_canonical_parent_map(unique_messy, api_key)
+    # Entity resolution (MDM) — Gemini-3-Flash-Preview
+    unique_messy = df["brands"].unique().tolist()
+    with st.spinner(f"Normalizing entities ({len(unique_messy)} brands)…"):
+        parent_map = get_canonical_parent_map(unique_messy, gemini_key)
 
-    df['parent_company'] = df['brands'].map(parent_map).fillna(df['brands'])
+    df["parent_company"] = df["brands"].map(parent_map).fillna(df["brands"])
+    df["unique_scans_n"] = pd.to_numeric(df.get("unique_scans_n"), errors="coerce").fillna(0)
+
     return df
 
-def fetch_demographics(api_key, region):
-    if not api_key:
+def fetch_demographics(census_key, region):
+    if not census_key:
         return None
-    c = Census(api_key)
+    c = Census(census_key)
     states = REGION_MAP.get(region, ["MI"])
     all_data = []
-    vars = ('B01003_001E', 'B19013_001E', 'B17001_002E', 'B17001_001E')
+    vars = ("B01003_001E", "B19013_001E", "B17001_002E", "B17001_001E")
 
     for s_code in states:
         try:
@@ -189,29 +248,29 @@ def fetch_demographics(api_key, region):
     if df.empty:
         return None
 
-    df['population'] = pd.to_numeric(df['B01003_001E'], errors='coerce')
-    df['income'] = pd.to_numeric(df['B19013_001E'], errors='coerce')
-    p_num = pd.to_numeric(df['B17001_002E'], errors='coerce')
-    p_den = pd.to_numeric(df['B17001_001E'], errors='coerce')
-    df['poverty_rate'] = (p_num / p_den.replace(0, 1)) * 100
-    return df[df['income'] > 0]
+    df["population"] = pd.to_numeric(df["B01003_001E"], errors="coerce")
+    df["income"] = pd.to_numeric(df["B19013_001E"], errors="coerce")
+    p_num = pd.to_numeric(df["B17001_002E"], errors="coerce")
+    p_den = pd.to_numeric(df["B17001_001E"], errors="coerce")
+    df["poverty_rate"] = (p_num / p_den.replace(0, 1)) * 100
+    return df[df["income"] > 0]
 
 def process_trends(files):
     if not files:
-        return "No trend PDFs. Use general training knowledge."
+        return ""
     text = ""
     for f in files:
         try:
             reader = PdfReader(f)
-            text += "".join([page.extract_text() or "" for page in reader.pages[:3]])
+            text += "".join([(page.extract_text() or "") for page in reader.pages[:3]])
         except:
             pass
     return text[:15000]
 
 # =============================================================================
-# 4B) EVIDENCE PACK HELPERS (FOR ROBUST STRATEGY PROMPT) + READABLE BULLETS
+# 4B) EVIDENCE PACK HELPERS + READABLE BULLETS
 # =============================================================================
-def _clean_str(x, max_len=240):
+def _clean_str(x, max_len=260):
     if x is None:
         return ""
     s = str(x).strip()
@@ -219,18 +278,11 @@ def _clean_str(x, max_len=240):
     return s[:max_len]
 
 def build_entity_evidence(df, entity, n=10):
-    """
-    Builds a compact evidence pack: top N products + claims + ingredient snippets.
-    This makes strategy outputs feel 'real' instead of generic.
-    """
     g = df[df["parent_company"] == entity].copy()
     if g.empty:
         return []
 
-    if "unique_scans_n" in g.columns:
-        g["unique_scans_n"] = pd.to_numeric(g["unique_scans_n"], errors="coerce").fillna(0)
-        g = g.sort_values("unique_scans_n", ascending=False)
-
+    g = g.sort_values("unique_scans_n", ascending=False)
     g = g.dropna(subset=["product_name"]).head(n)
 
     items = []
@@ -243,18 +295,14 @@ def build_entity_evidence(df, entity, n=10):
     return items
 
 def summarize_entity_signals(evidence_items):
-    """Converts evidence list into a short text block for the prompt (token-safe)."""
     if not evidence_items:
         return "No evidence available."
     lines = []
     for it in evidence_items[:10]:
-        lines.append(
-            f"- {it['product_name']} | Claims: {it['claims_tags']} | Ing: {it['ingredients_snip']}"
-        )
+        lines.append(f"- {it['product_name']} | Claims: {it['claims_tags']} | Ing: {it['ingredients_snip']}")
     return "\n".join(lines)
 
 def bullets_html(xs):
-    """Render list -> HTML bullets for Streamlit to_html() display."""
     if xs is None:
         return ""
     if isinstance(xs, list):
@@ -262,90 +310,176 @@ def bullets_html(xs):
     return re.sub(r"<", "&lt;", str(xs))
 
 # =============================================================================
-# 5) SIDEBAR
+# UI HELPERS: Tiles + Drawer
+# =============================================================================
+def tile_block(title, subtitle, bullets):
+    bullets_html_str = "".join([f"<div>• {b}</div>" for b in bullets if str(b).strip()])
+    if not bullets_html_str:
+        bullets_html_str = "<div class='small-muted'>No content</div>"
+    st.markdown(f"""
+    <div class="tile">
+      <div class="tile-title">{title}</div>
+      <div class="tile-sub">{subtitle}</div>
+      <div class="tile-bullets">{bullets_html_str}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def tile_controls(view_key, panel_name):
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        if st.button("View details", key=f"{view_key}_view"):
+            st.session_state.active_panel = panel_name
+    with c2:
+        if st.button("Collapse", key=f"{view_key}_collapse"):
+            if st.session_state.active_panel == panel_name:
+                st.session_state.active_panel = None
+
+# =============================================================================
+# 5) SIDEBAR (LOCK AFTER DIRECTIVE)
 # =============================================================================
 with st.sidebar:
-    st.title("🤖 Strategy Agent")
-    GEMINI_API = st.text_input("Gemini API Key", type="password")
-    CENSUS_API = st.text_input("Census API Key", type="password")
+    st.markdown("## Strategy Agent")
+    st.markdown("<div class='small-muted'>One-page readout. Drill into tiles only when needed.</div>", unsafe_allow_html=True)
     st.divider()
-    TARGET_REGION = st.selectbox("Strategic Region", list(REGION_MAP.keys()))
-    TARGET_CATEGORY = st.selectbox("Product Category", list(CATEGORY_MAP.keys()))
-    uploaded_files = st.file_uploader("Upload Trend PDFs", type=['pdf'], accept_multiple_files=True)
-    execute = st.button("🚀 Run Market Scan", type="primary")
+
+    if not st.session_state.ui_locked:
+        GEMINI_API = st.text_input("Gemini API Key", type="password")
+        CENSUS_API = st.text_input("Census API Key", type="password")
+
+        st.divider()
+        st.session_state.sel_region = st.selectbox("Region", list(REGION_MAP.keys()), index=list(REGION_MAP.keys()).index(st.session_state.sel_region) if st.session_state.sel_region in REGION_MAP else 0)
+        st.session_state.sel_category = st.selectbox("Category", list(CATEGORY_MAP.keys()), index=list(CATEGORY_MAP.keys()).index(st.session_state.sel_category) if st.session_state.sel_category in CATEGORY_MAP else 0)
+
+        uploaded_files = st.file_uploader("Trend PDFs (optional)", type=["pdf"], accept_multiple_files=True)
+
+        execute = st.button("Run market scan", type="primary")
+        st.markdown("<div class='small-muted'>Cleaning: Gemini-3-Flash-Preview · Strategy: Gemini-2.5-Pro</div>", unsafe_allow_html=True)
+    else:
+        # Locked view: show compact selections
+        st.markdown("**Selections**")
+        st.write(f"Category: **{st.session_state.sel_category}**")
+        st.write(f"Region: **{st.session_state.sel_region}**")
+
+        if st.session_state.sel_focus:
+            st.write(f"Focus: **{st.session_state.sel_focus}**")
+        if st.session_state.sel_competitors:
+            st.write(f"Peers: **{', '.join(st.session_state.sel_competitors[:5])}**")
+
+        st.divider()
+        if st.button("Edit selections"):
+            st.session_state.ui_locked = False
+            st.session_state.active_panel = None
+            st.session_state.directive_result = None
+
+        execute = False
+        GEMINI_API = None
+        CENSUS_API = None
+        uploaded_files = None
 
 # =============================================================================
-# 6) MAIN DASHBOARD
+# 6) MAIN
 # =============================================================================
-st.title("🚀 Strategic Intelligence Hub")
+st.markdown("# Strategic Intelligence Hub")
+st.markdown("<div class='small-muted'>Clean tiles. Consulting-style proof points. Click any tile to drill down.</div>", unsafe_allow_html=True)
 
-if execute and GEMINI_API:
-    with st.status("⚙️ Agent Working...", expanded=True) as status:
-        st.session_state.demographics_df = fetch_demographics(CENSUS_API, TARGET_REGION)
-        st.session_state.market_df = fetch_market_intelligence(TARGET_CATEGORY, GEMINI_API)
+# Run scan
+if "execute" not in locals():
+    execute = False
+
+if execute:
+    if not GEMINI_API:
+        st.error("Please provide a Gemini API key.")
+        st.stop()
+    if not CENSUS_API:
+        st.error("Please provide a Census API key.")
+        st.stop()
+
+    with st.status("Working…", expanded=True) as status:
+        st.write("Fetching demographics…")
+        st.session_state.demographics_df = fetch_demographics(CENSUS_API, st.session_state.sel_region)
+
+        st.write("Fetching market data…")
+        st.session_state.market_df = fetch_market_intelligence(st.session_state.sel_category, GEMINI_API)
+
+        st.write("Ingesting trend PDFs…")
         st.session_state.trends_text = process_trends(uploaded_files)
-        st.session_state.data_fetched = True
-        status.update(label="✅ Data Acquisition Complete", state="complete")
 
+        st.session_state.data_fetched = True
+        status.update(label="Data ready", state="complete")
+
+# If we already have data
 if st.session_state.data_fetched:
     m_df = st.session_state.market_df
     d_df = st.session_state.demographics_df
 
     if m_df is None or m_df.empty:
-        st.error("❌ Market Data Error: No items returned.")
+        st.error("No market data returned.")
         st.stop()
     if d_df is None or d_df.empty:
-        st.error("❌ Census Error: No data returned.")
+        st.error("No census data returned.")
         st.stop()
 
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Market SKUs", len(m_df))
-    parent_list = sorted(m_df['parent_company'].dropna().unique().tolist())
-    kpi2.metric("Clean Parent Entities", len(parent_list))
-    kpi3.metric("Avg Income", f"${d_df['income'].mean():,.0f}")
+    # KPIs row
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("SKUs", len(m_df))
+    parent_list = sorted(m_df["parent_company"].dropna().unique().tolist())
+    k2.metric("Entities", len(parent_list))
+    k3.metric("Avg income", f"${d_df['income'].mean():,.0f}")
+    k4.metric("Poverty", f"{d_df['poverty_rate'].mean():.1f}%")
 
-    st.markdown('<div class="section-header">Competitive Landscape Analysis</div>', unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>Market snapshot</div>", unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([1, 1.5])
-    with col_l:
-        my_brand = st.selectbox("Select Your Brand Focus:", parent_list)
-        entity_skus = m_df[m_df['parent_company'] == my_brand]
-        st.info(f"**{my_brand}** controls **{len(entity_skus)} SKUs**.")
+    # Focus selection (kept in main content pre-lock)
+    sel_cols = st.columns([2, 1])
+    with sel_cols[0]:
+        my_brand = st.selectbox("Focus entity", parent_list, index=0 if st.session_state.sel_focus is None or st.session_state.sel_focus not in parent_list else parent_list.index(st.session_state.sel_focus))
+    with sel_cols[1]:
+        st.markdown("<div class='small-muted' style='padding-top: 1.6rem;'>Choose the focal entity, then generate a directive.</div>", unsafe_allow_html=True)
 
-    with col_r:
-        st.bar_chart(m_df['parent_company'].value_counts().head(10))
+    # Simple competitor list (by presence)
+    comp_list = (
+        m_df[m_df["parent_company"] != my_brand]["parent_company"]
+        .value_counts()
+        .head(6)
+        .index.tolist()
+    )
 
-    # =============================================================================
-    # STRATEGIC DIRECTIVE ENGINE (ANALYSIS ON GEMINI-2.5-PRO; CLEANING ON 3-FLASH-PREVIEW)
-    # =============================================================================
-    st.divider()
-    if st.button("✨ Generate Full Strategic Directive", type="primary"):
-        with st.spinner("🧠 Synthesizing Strategy via Gemini-2.5-Pro (with SKU evidence)..."):
-            genai.configure(api_key=GEMINI_API)
-            model = genai.GenerativeModel("gemini-2.5-pro")
+    # Top bar chart (compact)
+    with st.expander("Top entities (SKU count)", expanded=False):
+        st.bar_chart(m_df["parent_company"].value_counts().head(10))
 
-            # Top competitors by entity presence in the dataset
-            comp_list = (
-                m_df[m_df["parent_company"] != my_brand]["parent_company"]
-                .value_counts()
-                .head(6)
-                .index
-                .tolist()
-            )
+    # Generate directive control (once we generate, lock the sidebar + store selections)
+    st.markdown("<div class='section-header'>Strategy directive</div>", unsafe_allow_html=True)
+    gen_cols = st.columns([1.2, 1.2, 1.6])
+    with gen_cols[0]:
+        generate = st.button("Generate directive", type="primary")
+    with gen_cols[1]:
+        st.markdown("<div class='small-muted'>Uses Gemini-2.5-Pro with SKU-level evidence.</div>", unsafe_allow_html=True)
+    with gen_cols[2]:
+        st.markdown("<div class='small-muted'>Output is directional without POS. Treat as hypothesis generator.</div>", unsafe_allow_html=True)
 
-            # Evidence packs
-            my_evidence = build_entity_evidence(m_df, my_brand, n=10)
-            comp_evidence_map = {c: build_entity_evidence(m_df, c, n=8) for c in comp_list}
+    # If directive already exists, use it
+    result = st.session_state.directive_result
 
-            my_evidence_txt = summarize_entity_signals(my_evidence)
-            comp_evidence_txt = "\n\n".join(
-                [f"{c}:\n{summarize_entity_signals(comp_evidence_map.get(c, []))}" for c in comp_list]
-            )
+    if generate:
+        # Lock selections after generation
+        st.session_state.sel_focus = my_brand
+        st.session_state.sel_competitors = comp_list
+        st.session_state.ui_locked = True
 
-            total_skus = len(m_df)
-            my_skus = len(m_df[m_df["parent_company"] == my_brand])
+        # Strategy model: Gemini-2.5-Pro
+        genai.configure(api_key=GEMINI_API)
+        model = genai.GenerativeModel("gemini-2.5-pro")
 
-            prompt = f"""
+        my_evidence_txt = summarize_entity_signals(build_entity_evidence(m_df, my_brand, n=10))
+        comp_evidence_txt = "\n\n".join(
+            [f"{c}:\n{summarize_entity_signals(build_entity_evidence(m_df, c, n=8))}" for c in comp_list]
+        )
+
+        total_skus = len(m_df)
+        my_skus = len(m_df[m_df["parent_company"] == my_brand])
+
+        prompt = f"""
 ACT AS: Chief Strategy Officer for a CPG firm.
 GOAL: Produce strategy that can expand into slides (clear headers, MECE structure, specific proof points).
 CONSTRAINTS:
@@ -354,8 +488,8 @@ CONSTRAINTS:
 - Keep each text field max 2 sentences unless it's a list. Prefer lists over paragraphs.
 
 CONTEXT:
-- Category: {TARGET_CATEGORY}
-- Region: {TARGET_REGION}
+- Category: {st.session_state.sel_category}
+- Region: {st.session_state.sel_region}
 - Category dataset size (SKUs pulled): {total_skus}
 - Focus entity: {my_brand} (SKUs observed: {my_skus})
 - Demographics: Avg Income ${d_df['income'].mean():,.0f}, Avg Poverty {d_df['poverty_rate'].mean():.1f}%
@@ -456,110 +590,140 @@ IMPORTANT:
 - If you can’t find evidence for a claim/ingredient, label it as 'Not observed in evidence' rather than inventing.
 """
 
-            try:
+        try:
+            with st.spinner("Generating strategy…"):
                 response = model.generate_content(prompt)
-                res_txt = re.sub(r'```json\s?|```', '', response.text).strip()
-                result = json.loads(res_txt)
+            res_txt = re.sub(r"```json\s?|```", "", response.text).strip()
+            result = json.loads(res_txt)
+            st.session_state.directive_result = result
+        except Exception as e:
+            st.error(f"Strategy generation failed: {e}")
+            st.stop()
 
-                # ----------------------------
-                # RENDER: EXECUTIVE SUMMARY
-                # ----------------------------
-                st.markdown("## 📋 Executive Summary")
-                es = result.get("executive_summary", {})
-                st.info(es.get("bluf", ""))
+    # ----------------------------
+    # One-page tiles (Quadrants)
+    # ----------------------------
+    if result:
+        es = result.get("executive_summary", {})
+        ms = result.get("market_structure", {})
+        bpl = ms.get("branded_vs_private_label", {})
+        occ = result.get("occasion_cards", [])
+        cs = result.get("claims_strategy", {})
+        ing = result.get("ingredient_audit", [])
 
-                c_es1, c_es2 = st.columns(2)
-                with c_es1:
-                    st.markdown("**What we know (evidence-based)**")
-                    for b in es.get("what_we_know", []):
-                        st.write(f"• {b}")
-                with c_es2:
-                    st.markdown("**What we don’t know (risks / gaps)**")
-                    for b in es.get("what_we_dont_know", []):
-                        st.write(f"• {b}")
+        tile_market = (bpl.get("observations", [])[:2] + bpl.get("implications", [])[:2] + bpl.get("watchouts", [])[:1])
+        tile_occ = []
+        for c in occ[:3]:
+            nm = c.get("occasion_name", "Occasion")
+            hd = c.get("slide_headline", "")
+            tile_occ.append(f"{nm}: {hd}".strip().strip(":"))
+        tile_occ = tile_occ[:5]
 
-                # ----------------------------
-                # RENDER: MARKET STRUCTURE
-                # ----------------------------
-                st.markdown("## 🧱 Market Structure")
-                ms = result.get("market_structure", {})
-                bpl = ms.get("branded_vs_private_label", {})
+        tile_claims = (cs.get("category_claims_that_win", [])[:3] + cs.get(f"opportunity_claims_for_{my_brand}", [])[:2])
 
-                st.markdown("**Branded vs Private Label**")
-                c_ms1, c_ms2, c_ms3 = st.columns(3)
-                with c_ms1:
-                    st.markdown("_Observations_")
+        tile_ing = []
+        for row in ing[:5]:
+            tile_ing.append(f"{row.get('ingredient_type','Ingredient')}: {row.get('implication','')}")
+        tile_ing = tile_ing[:5]
+
+        st.markdown("<div class='section-header'>One-page strategy readout</div>", unsafe_allow_html=True)
+        r1c1, r1c2 = st.columns(2)
+        with r1c1:
+            tile_block("Market Structure", "Branded vs private label + competitive roles", tile_market)
+            tile_controls("tile_market", "market")
+        with r1c2:
+            tile_block("Occasions", "Three MECE occasions with slide headlines", tile_occ)
+            tile_controls("tile_occ", "occasions")
+
+        r2c1, r2c2 = st.columns(2)
+        with r2c1:
+            tile_block("Claims Strategy", "Winning claims + opportunity claims", tile_claims)
+            tile_controls("tile_claims", "claims")
+        with r2c2:
+            tile_block("Ingredient Audit", "Key differences + why they matter", tile_ing)
+            tile_controls("tile_ing", "ingredients")
+
+        # ----------------------------
+        # Detail Drawer (single area)
+        # ----------------------------
+        st.divider()
+        panel = st.session_state.active_panel
+
+        if not panel:
+            st.markdown("<div class='small-muted'>Tip: click “View details” on any tile to drill into evidence and tables.</div>", unsafe_allow_html=True)
+
+        if panel:
+            st.markdown("## Details")
+            st.markdown("<div class='small-muted'>This drawer changes based on the tile you selected.</div>", unsafe_allow_html=True)
+
+            if panel == "market":
+                st.markdown("### Market Structure")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.markdown("**Observations**")
                     for b in bpl.get("observations", []):
                         st.write(f"• {b}")
-                with c_ms2:
-                    st.markdown("_Implications_")
+                with c2:
+                    st.markdown("**Implications**")
                     for b in bpl.get("implications", []):
                         st.write(f"• {b}")
-                with c_ms3:
-                    st.markdown("_Watchouts_")
+                with c3:
+                    st.markdown("**Watchouts**")
                     for b in bpl.get("watchouts", []):
                         st.write(f"• {b}")
 
                 arena = ms.get("competitive_arena", [])
                 if arena:
-                    st.markdown("**Competitive Arena**")
+                    st.markdown("**Competitive arena**")
                     st.write(pd.DataFrame(arena).to_html(index=False), unsafe_allow_html=True)
 
-                # ----------------------------
-                # RENDER: OCCASION CARDS
-                # ----------------------------
-                st.markdown("## 🎯 Occasion Cards (MECE)")
-                for card in result.get("occasion_cards", []):
-                    occ_name = card.get("occasion_name", "Occasion")
-                    headline = card.get("slide_headline", "")
-                    with st.expander(f"🧩 {occ_name} — {headline}", expanded=True):
+                with st.expander("Entity mapping audit (raw brand → parent)", expanded=False):
+                    st.dataframe(m_df[["brands", "parent_company"]].drop_duplicates())
+
+            elif panel == "occasions":
+                st.markdown("### Occasion Cards")
+                for card in occ:
+                    nm = card.get("occasion_name", "Occasion")
+                    hd = card.get("slide_headline", "")
+                    with st.expander(f"{nm} — {hd}", expanded=False):
                         st.markdown(f"**Definition:** {card.get('definition','')}")
                         st.markdown(f"**Who wins today:** {card.get('who_wins_today','')}")
-                        st.markdown("**Winning offer (evidence cues)**")
+                        st.markdown("**Winning offer**")
                         for b in card.get("winning_offer", []):
                             st.write(f"• {b}")
-
                         st.markdown(f"**Gap for {my_brand}**")
                         for b in card.get(f"gap_for_{my_brand}", []):
                             st.write(f"• {b}")
-
-                        st.markdown(f"**Moves for {my_brand} (actionable)**")
+                        st.markdown(f"**Moves for {my_brand}**")
                         for b in card.get(f"moves_for_{my_brand}", []):
                             st.write(f"• {b}")
 
-                # ----------------------------
-                # RENDER: CLAIMS STRATEGY
-                # ----------------------------
-                st.markdown("## 🏷️ Claims Strategy")
-                cs = result.get("claims_strategy", {})
-                c_cs1, c_cs2 = st.columns(2)
-                with c_cs1:
+            elif panel == "claims":
+                st.markdown("### Claims Strategy")
+                c1, c2 = st.columns(2)
+                with c1:
                     st.markdown("**Category claims that win**")
                     for b in cs.get("category_claims_that_win", []):
                         st.write(f"• {b}")
-                with c_cs2:
+                with c2:
                     st.markdown(f"**Opportunity claims for {my_brand}**")
                     for b in cs.get(f"opportunity_claims_for_{my_brand}", []):
                         st.write(f"• {b}")
 
                 patterns = cs.get("competitor_claim_patterns", [])
                 if patterns:
-                    st.markdown("**Competitor claim patterns (with proof points)**")
+                    st.markdown("**Competitor patterns (with proof points)**")
                     st.write(pd.DataFrame(patterns).to_html(index=False), unsafe_allow_html=True)
 
-                # ----------------------------
-                # RENDER: INGREDIENT AUDIT (READABLE)
-                # ----------------------------
-                st.markdown("## 🔬 Ingredient Audit (Readable)")
-                ing = result.get("ingredient_audit", [])
-                if ing:
-                    ing_df = pd.DataFrame(ing)
+            elif panel == "ingredients":
+                st.markdown("### Ingredient Audit")
+                ing_list = result.get("ingredient_audit", [])
+                if ing_list:
+                    ing_df = pd.DataFrame(ing_list)
 
-                    # Render {my_brand} list column as bullets if present
                     if my_brand in ing_df.columns:
                         ing_df[my_brand] = ing_df[my_brand].apply(bullets_html)
 
-                    # competitor_1 / competitor_2 are dicts; convert to readable HTML blocks
                     def _comp_block(c):
                         if not isinstance(c, dict):
                             return ""
@@ -573,19 +737,12 @@ IMPORTANT:
                         ing_df["competitor_2"] = ing_df["competitor_2"].apply(_comp_block)
 
                     st.write(ing_df.to_html(index=False, escape=False), unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='small-muted'>No ingredient audit returned.</div>", unsafe_allow_html=True)
 
-                # ----------------------------
-                # RENDER: STRATEGIC QUESTIONS
-                # ----------------------------
-                st.markdown("## 🧐 Strategic Questions")
-                for q in result.get("strategic_questions", []):
-                    st.warning(f"👉 {q}")
+            st.divider()
 
-            except Exception as e:
-                st.error(f"Analysis Failed: {e}")
-
-    # =============================================================================
-    # AI Normalization Audit (shows raw->parent mapping)
-    # =============================================================================
-    with st.expander("🔍 AI Normalization Audit"):
-        st.dataframe(m_df[['brands', 'parent_company']].drop_duplicates())
+    else:
+        st.markdown("<div class='small-muted'>Generate a directive to populate the one-page tiles.</div>", unsafe_allow_html=True)
+else:
+    st.markdown("<div class='small-muted'>Run a market scan to begin.</div>", unsafe_allow_html=True)
