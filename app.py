@@ -773,11 +773,16 @@ if d_df is None or d_df.empty:
 
 # KPIs
 parent_list = sorted(m_df["parent_company"].dropna().unique().tolist())
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+
 k1.metric("SKUs", len(m_df))
 k2.metric("Entities", len(parent_list))
 k3.metric("Avg income", f"${d_df['income'].mean():,.0f}")
 k4.metric("Poverty", f"{d_df['poverty_rate'].mean():.1f}%")
+
+k5.metric("Median age", f"{d_df['median_age'].mean():.1f}")
+k6.metric("Family HH", f"{d_df['family_household_pct'].mean():.1f}%")
+
 
 st.markdown("<div class='section-label'>Market snapshot</div>", unsafe_allow_html=True)
 
@@ -1040,3 +1045,4 @@ tile_row("mdm", "Entity normalization", "Validate mappings before presenting", t
 
 # Optional: questions tile (if you want a 7th)
 # tile_row("questions", "Strategic questions", "Hard questions to pressure-test moves", questions[:3])
+
