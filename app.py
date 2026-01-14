@@ -11,70 +11,99 @@ import google.generativeai as genai
 from pypdf import PdfReader
 
 # =============================================================================
-# 1) PAGE CONFIG + "GOOGLE/APPLE" CLEAN UI
+# 1) PAGE CONFIG + CLEAN LIGHT UI (GOOGLE/APPLE-LIKE)
 # =============================================================================
-st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="◼", layout="wide")
+st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="■", layout="wide")
 
 st.markdown("""
 <style>
-/* ---------- Layout / Typography ---------- */
-div.block-container { padding-top: 1.25rem; max-width: 1400px; }
-html, body, [class*="css"] { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+/* ---------- App background + typography ---------- */
+html, body, [class*="css"] {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+.stApp {
+  background: #f6f7fb; /* soft light gray */
+  color: #0f172a;
+}
+div.block-container { padding-top: 1.2rem; max-width: 1400px; }
 
-h1, h2, h3, h4 { letter-spacing: -0.02em; }
-h1 { font-size: 28px !important; margin-bottom: 0.25rem; }
-h2 { font-size: 18px !important; margin-top: 0.75rem; margin-bottom: 0.25rem; }
-h3 { font-size: 15px !important; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+h1 { font-size: 26px !important; margin: 0.15rem 0 0.25rem 0; letter-spacing: -0.02em; }
+h2 { font-size: 16px !important; margin: 0.85rem 0 0.25rem 0; letter-spacing: -0.02em; }
+h3 { font-size: 14px !important; margin: 0.65rem 0 0.25rem 0; letter-spacing: -0.02em; }
 
 .small-muted { color: #64748b; font-size: 12px; line-height: 1.35; }
-.kpi-note { color: #64748b; font-size: 11px; }
+.hr { height: 1px; background: #e5e7eb; margin: 14px 0; }
 
-/* ---------- Buttons ---------- */
+/* ---------- Buttons (compact, aligned) ---------- */
 .stButton>button {
-  width: 100%;
-  border-radius: 10px;
-  font-weight: 600;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid #e2e8f0;
+  border-radius: 12px !important;
+  font-weight: 650 !important;
+  padding: 0.55rem 0.85rem !important;
+  border: 1px solid #e5e7eb !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
 }
-.stButton>button:hover { border-color: #cbd5e1; }
+.stButton>button:hover { border-color: #cbd5e1 !important; background: #fbfbfd !important; }
+.stButton>button:focus { outline: none !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important; }
 
-/* ---------- Section header ---------- */
-.section-header {
-  background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
-  color: white;
-  padding: 14px 18px;
-  border-radius: 14px;
-  margin: 18px 0 14px 0;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+/* Primary button styling */
+button[kind="primary"] {
+  background: #111827 !important;
+  color: #ffffff !important;
+  border: 1px solid #111827 !important;
 }
+button[kind="primary"]:hover { background: #0b1220 !important; }
 
-/* ---------- Tiles (Quadrants) ---------- */
-.tile {
-  border: 1px solid #e2e8f0;
+/* ---------- Cards / Tiles ---------- */
+.card {
+  background: #ffffff;
+  border: 1px solid #e6e8ef;
   border-radius: 16px;
   padding: 16px 16px 14px 16px;
-  background: #ffffff;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
-  min-height: 230px;
+  box-shadow: 0 1px 0 rgba(15,23,42,0.04);
 }
-.tile-title { font-size: 14px; font-weight: 750; color: #0f172a; margin-bottom: 4px; }
-.tile-sub { font-size: 12px; color: #64748b; margin-bottom: 10px; }
-.tile-bullets { font-size: 13px; color: #0f172a; line-height: 1.35; }
-.tile-bullets div { margin: 7px 0; }
-.tile-footer { margin-top: 12px; display: flex; gap: 8px; }
+.card-title {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+.card-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+.card-bullets {
+  font-size: 13px;
+  color: #0f172a;
+  line-height: 1.35;
+}
+.card-bullets div { margin: 7px 0; }
+.card-footer {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
 
-/* ---------- Tables (clean) ---------- */
+/* ---------- Section label (subtle, no gradients) ---------- */
+.section-label {
+  font-size: 12px;
+  font-weight: 750;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 12px 0 10px 2px;
+}
+
+/* ---------- Tables ---------- */
 table { width: 100%; border-collapse: collapse; }
 th {
-  background-color: #f8fafc;
+  background: #f8fafc;
   color: #0f172a !important;
   text-align: left;
   padding: 10px;
-  font-weight: 700;
-  border-bottom: 1px solid #e2e8f0;
+  font-weight: 750;
+  border-bottom: 1px solid #e5e7eb;
 }
 td {
   padding: 9px 10px;
@@ -82,14 +111,15 @@ td {
   vertical-align: top;
 }
 
-/* ---------- Expander styling (subtle) ---------- */
+/* ---------- Expander header color fix ---------- */
 details summary {
-  font-size: 13px;
-  font-weight: 650;
-  color: #0f172a;
+  color: #0f172a !important;
+  font-weight: 650 !important;
+  font-size: 13px !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # =============================================================================
 # 2) SESSION STATE
@@ -103,7 +133,7 @@ if "demographics_df" not in st.session_state:
 if "trends_text" not in st.session_state:
     st.session_state.trends_text = ""
 
-# UI/Flow state
+# UI state
 if "active_panel" not in st.session_state:
     st.session_state.active_panel = None  # "market" | "occasions" | "claims" | "ingredients"
 if "directive_result" not in st.session_state:
@@ -111,7 +141,7 @@ if "directive_result" not in st.session_state:
 if "ui_locked" not in st.session_state:
     st.session_state.ui_locked = False
 
-# Persist selections after lock
+# Persist selections across reruns
 if "sel_region" not in st.session_state:
     st.session_state.sel_region = "Midwest"
 if "sel_category" not in st.session_state:
@@ -120,6 +150,11 @@ if "sel_focus" not in st.session_state:
     st.session_state.sel_focus = None
 if "sel_competitors" not in st.session_state:
     st.session_state.sel_competitors = []
+if "show_top_entities" not in st.session_state:
+    st.session_state.show_top_entities = True  # auto-collapse later
+if "show_focus_block" not in st.session_state:
+    st.session_state.show_focus_block = True   # collapse after generate
+
 
 # =============================================================================
 # 3) MDM ENTITY RESOLUTION (LOCKED TO GEMINI-3-FLASH-PREVIEW)
@@ -161,6 +196,7 @@ RETURN JSON ONLY:
         st.error(f"MDM Engine Error: {e}")
         return {b: b for b in messy_brands}
 
+
 # =============================================================================
 # 4) DATA ACQUISITION
 # =============================================================================
@@ -184,7 +220,7 @@ CATEGORY_MAP = {
 
 def fetch_market_intelligence(category, gemini_key):
     tech_tag = CATEGORY_MAP.get(category, category.lower())
-    headers = {"User-Agent": "StrategicIntelligenceHub/3.0"}
+    headers = {"User-Agent": "StrategicIntelligenceHub/4.0"}
     all_products = []
     status_text = st.empty()
 
@@ -267,8 +303,9 @@ def process_trends(files):
             pass
     return text[:15000]
 
+
 # =============================================================================
-# 4B) EVIDENCE PACK HELPERS + READABLE BULLETS
+# 4B) EVIDENCE + RENDER HELPERS (LESS IS MORE)
 # =============================================================================
 def _clean_str(x, max_len=260):
     if x is None:
@@ -281,7 +318,6 @@ def build_entity_evidence(df, entity, n=10):
     g = df[df["parent_company"] == entity].copy()
     if g.empty:
         return []
-
     g = g.sort_values("unique_scans_n", ascending=False)
     g = g.dropna(subset=["product_name"]).head(n)
 
@@ -289,8 +325,8 @@ def build_entity_evidence(df, entity, n=10):
     for _, r in g.iterrows():
         items.append({
             "product_name": _clean_str(r.get("product_name"), 100),
-            "claims_tags": _clean_str(r.get("labels_tags"), 180),
-            "ingredients_snip": _clean_str(r.get("ingredients_text"), 260),
+            "claims_tags": _clean_str(r.get("labels_tags"), 170),
+            "ingredients_snip": _clean_str(r.get("ingredients_text"), 240),
         })
     return items
 
@@ -309,83 +345,93 @@ def bullets_html(xs):
         return "<br>".join([f"• {re.sub(r'<','&lt;', str(x))}" for x in xs if str(x).strip()])
     return re.sub(r"<", "&lt;", str(xs))
 
-# =============================================================================
-# UI HELPERS: Tiles + Drawer
-# =============================================================================
-def tile_block(title, subtitle, bullets):
-    bullets_html_str = "".join([f"<div>• {b}</div>" for b in bullets if str(b).strip()])
-    if not bullets_html_str:
-        bullets_html_str = "<div class='small-muted'>No content</div>"
+def _truncate_bullet(s, max_len=110):
+    s = str(s).strip()
+    if len(s) <= max_len:
+        return s
+    return s[:max_len-1].rstrip() + "…"
+
+def card(title, subtitle, bullets, primary_button_label, primary_key, panel_name):
+    # bullets: keep it tight (3 max)
+    bullets = [b for b in bullets if str(b).strip()]
+    bullets = bullets[:3]
+    bullets_html_str = "".join([f"<div>• {_truncate_bullet(b, 120)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
+
     st.markdown(f"""
-    <div class="tile">
-      <div class="tile-title">{title}</div>
-      <div class="tile-sub">{subtitle}</div>
-      <div class="tile-bullets">{bullets_html_str}</div>
+    <div class="card">
+      <div class="card-title">{title}</div>
+      <div class="card-sub">{subtitle}</div>
+      <div class="card-bullets">{bullets_html_str}</div>
     </div>
     """, unsafe_allow_html=True)
 
-def tile_controls(view_key, panel_name):
+    # controls inside a clean row (no weird spacing)
     c1, c2 = st.columns([1, 1])
     with c1:
-        if st.button("View details", key=f"{view_key}_view"):
+        if st.button(primary_button_label, key=primary_key):
             st.session_state.active_panel = panel_name
     with c2:
-        if st.button("Collapse", key=f"{view_key}_collapse"):
+        if st.button("Hide", key=f"{primary_key}_hide"):
             if st.session_state.active_panel == panel_name:
                 st.session_state.active_panel = None
+
 
 # =============================================================================
 # 5) SIDEBAR (LOCK AFTER DIRECTIVE)
 # =============================================================================
 with st.sidebar:
     st.markdown("## Strategy Agent")
-    st.markdown("<div class='small-muted'>One-page readout. Drill into tiles only when needed.</div>", unsafe_allow_html=True)
-    st.divider()
+    st.markdown("<div class='small-muted'>Run scan → pick focus → generate directive → present one-page tiles.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+    # Store these in locals so main logic can use them (even after lock we show None)
+    GEMINI_API = None
+    CENSUS_API = None
+    uploaded_files = None
+    execute = False
 
     if not st.session_state.ui_locked:
         GEMINI_API = st.text_input("Gemini API Key", type="password")
         CENSUS_API = st.text_input("Census API Key", type="password")
 
-        st.divider()
-        st.session_state.sel_region = st.selectbox("Region", list(REGION_MAP.keys()), index=list(REGION_MAP.keys()).index(st.session_state.sel_region) if st.session_state.sel_region in REGION_MAP else 0)
-        st.session_state.sel_category = st.selectbox("Category", list(CATEGORY_MAP.keys()), index=list(CATEGORY_MAP.keys()).index(st.session_state.sel_category) if st.session_state.sel_category in CATEGORY_MAP else 0)
+        st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+        st.session_state.sel_region = st.selectbox("Region", list(REGION_MAP.keys()),
+                                                   index=list(REGION_MAP.keys()).index(st.session_state.sel_region)
+                                                   if st.session_state.sel_region in REGION_MAP else 0)
+        st.session_state.sel_category = st.selectbox("Category", list(CATEGORY_MAP.keys()),
+                                                     index=list(CATEGORY_MAP.keys()).index(st.session_state.sel_category)
+                                                     if st.session_state.sel_category in CATEGORY_MAP else 0)
 
         uploaded_files = st.file_uploader("Trend PDFs (optional)", type=["pdf"], accept_multiple_files=True)
 
         execute = st.button("Run market scan", type="primary")
-        st.markdown("<div class='small-muted'>Cleaning: Gemini-3-Flash-Preview · Strategy: Gemini-2.5-Pro</div>", unsafe_allow_html=True)
+        st.markdown("<div class='small-muted'>Cleaning: gemini-3-flash-preview · Strategy: gemini-2.5-pro</div>", unsafe_allow_html=True)
     else:
-        # Locked view: show compact selections
         st.markdown("**Selections**")
         st.write(f"Category: **{st.session_state.sel_category}**")
         st.write(f"Region: **{st.session_state.sel_region}**")
-
         if st.session_state.sel_focus:
             st.write(f"Focus: **{st.session_state.sel_focus}**")
         if st.session_state.sel_competitors:
             st.write(f"Peers: **{', '.join(st.session_state.sel_competitors[:5])}**")
 
-        st.divider()
+        st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
         if st.button("Edit selections"):
             st.session_state.ui_locked = False
             st.session_state.active_panel = None
             st.session_state.directive_result = None
+            st.session_state.show_focus_block = True
+            st.session_state.show_top_entities = True
 
-        execute = False
-        GEMINI_API = None
-        CENSUS_API = None
-        uploaded_files = None
 
 # =============================================================================
 # 6) MAIN
 # =============================================================================
 st.markdown("# Strategic Intelligence Hub")
-st.markdown("<div class='small-muted'>Clean tiles. Consulting-style proof points. Click any tile to drill down.</div>", unsafe_allow_html=True)
+st.markdown("<div class='small-muted'>One-page tiles. Click any tile to drill down in the details drawer.</div>", unsafe_allow_html=True)
 
 # Run scan
-if "execute" not in locals():
-    execute = False
-
 if execute:
     if not GEMINI_API:
         st.error("Please provide a Gemini API key.")
@@ -407,7 +453,7 @@ if execute:
         st.session_state.data_fetched = True
         status.update(label="Data ready", state="complete")
 
-# If we already have data
+# If we have data
 if st.session_state.data_fetched:
     m_df = st.session_state.market_df
     d_df = st.session_state.demographics_df
@@ -419,7 +465,7 @@ if st.session_state.data_fetched:
         st.error("No census data returned.")
         st.stop()
 
-    # KPIs row
+    # KPI row (tight)
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("SKUs", len(m_df))
     parent_list = sorted(m_df["parent_company"].dropna().unique().tolist())
@@ -427,45 +473,72 @@ if st.session_state.data_fetched:
     k3.metric("Avg income", f"${d_df['income'].mean():,.0f}")
     k4.metric("Poverty", f"{d_df['poverty_rate'].mean():.1f}%")
 
-    st.markdown("<div class='section-header'>Market snapshot</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-label'>Market snapshot</div>", unsafe_allow_html=True)
 
-    # Focus selection (kept in main content pre-lock)
-    sel_cols = st.columns([2, 1])
-    with sel_cols[0]:
-        my_brand = st.selectbox("Focus entity", parent_list, index=0 if st.session_state.sel_focus is None or st.session_state.sel_focus not in parent_list else parent_list.index(st.session_state.sel_focus))
-    with sel_cols[1]:
-        st.markdown("<div class='small-muted' style='padding-top: 1.6rem;'>Choose the focal entity, then generate a directive.</div>", unsafe_allow_html=True)
+    # Focus selection block (auto-hide later)
+    if st.session_state.show_focus_block and not st.session_state.ui_locked:
+        focus_card = st.container()
+        with focus_card:
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                my_brand = st.selectbox(
+                    "Focus entity",
+                    parent_list,
+                    index=0 if (st.session_state.sel_focus is None or st.session_state.sel_focus not in parent_list)
+                    else parent_list.index(st.session_state.sel_focus),
+                )
+                # Persist focus selection immediately
+                st.session_state.sel_focus = my_brand
 
-    # Simple competitor list (by presence)
+                # AUTO-COLLAPSE: once a focus is chosen, collapse the "Top entities" expander
+                st.session_state.show_top_entities = False
+
+            with c2:
+                st.markdown("<div class='small-muted' style='padding-top: 1.6rem;'>Pick the focal entity. Then generate a directive.</div>", unsafe_allow_html=True)
+
+            # optional: show top entities expander only before focus selection
+            if st.session_state.show_top_entities:
+                with st.expander("Top entities (SKU count)", expanded=True):
+                    st.bar_chart(m_df["parent_company"].value_counts().head(10))
+            else:
+                with st.expander("Top entities (SKU count)", expanded=False):
+                    st.bar_chart(m_df["parent_company"].value_counts().head(10))
+    else:
+        # If locked or focus block hidden, use stored selection
+        my_brand = st.session_state.sel_focus or (parent_list[0] if parent_list else None)
+
+    # Competitor list (by presence)
     comp_list = (
         m_df[m_df["parent_company"] != my_brand]["parent_company"]
         .value_counts()
         .head(6)
         .index.tolist()
+        if my_brand else []
     )
 
-    # Top bar chart (compact)
-    with st.expander("Top entities (SKU count)", expanded=False):
-        st.bar_chart(m_df["parent_company"].value_counts().head(10))
+    st.markdown("<div class='section-label'>Strategy directive</div>", unsafe_allow_html=True)
 
-    # Generate directive control (once we generate, lock the sidebar + store selections)
-    st.markdown("<div class='section-header'>Strategy directive</div>", unsafe_allow_html=True)
-    gen_cols = st.columns([1.2, 1.2, 1.6])
-    with gen_cols[0]:
-        generate = st.button("Generate directive", type="primary")
-    with gen_cols[1]:
-        st.markdown("<div class='small-muted'>Uses Gemini-2.5-Pro with SKU-level evidence.</div>", unsafe_allow_html=True)
-    with gen_cols[2]:
-        st.markdown("<div class='small-muted'>Output is directional without POS. Treat as hypothesis generator.</div>", unsafe_allow_html=True)
+    # Generate button row (compact)
+    c_gen1, c_gen2, c_gen3 = st.columns([1.2, 1.4, 1.4])
+    with c_gen1:
+        generate = st.button("Generate directive", type="primary", disabled=st.session_state.ui_locked or (not execute and GEMINI_API is None and not st.session_state.ui_locked))
+    with c_gen2:
+        st.markdown("<div class='small-muted'>Strategy model: gemini-2.5-pro (deeper reasoning)</div>", unsafe_allow_html=True)
+    with c_gen3:
+        st.markdown("<div class='small-muted'>Evidence: SKU/claims/ingredients + optional trend PDFs</div>", unsafe_allow_html=True)
 
-    # If directive already exists, use it
+    # Use existing directive if present
     result = st.session_state.directive_result
 
+    # Generate directive (needs GEMINI_API, so if sidebar is locked, directive already exists)
     if generate:
         # Lock selections after generation
         st.session_state.sel_focus = my_brand
         st.session_state.sel_competitors = comp_list
         st.session_state.ui_locked = True
+
+        # Hide focus selection block after generation (as you requested)
+        st.session_state.show_focus_block = False
 
         # Strategy model: Gemini-2.5-Pro
         genai.configure(api_key=GEMINI_API)
@@ -600,9 +673,9 @@ IMPORTANT:
             st.error(f"Strategy generation failed: {e}")
             st.stop()
 
-    # ----------------------------
-    # One-page tiles (Quadrants)
-    # ----------------------------
+    # ==========================
+    # One-page tiles (2×2 grid)
+    # ==========================
     if result:
         es = result.get("executive_summary", {})
         ms = result.get("market_structure", {})
@@ -611,53 +684,47 @@ IMPORTANT:
         cs = result.get("claims_strategy", {})
         ing = result.get("ingredient_audit", [])
 
-        tile_market = (bpl.get("observations", [])[:2] + bpl.get("implications", [])[:2] + bpl.get("watchouts", [])[:1])
+        # Tile bullets (tight)
+        tile_market = (bpl.get("observations", [])[:2] + bpl.get("implications", [])[:1])
         tile_occ = []
         for c in occ[:3]:
             nm = c.get("occasion_name", "Occasion")
             hd = c.get("slide_headline", "")
-            tile_occ.append(f"{nm}: {hd}".strip().strip(":"))
-        tile_occ = tile_occ[:5]
-
-        tile_claims = (cs.get("category_claims_that_win", [])[:3] + cs.get(f"opportunity_claims_for_{my_brand}", [])[:2])
-
+            tile_occ.append(f"{nm} — {hd}".strip(" —"))
+        tile_claims = cs.get("category_claims_that_win", [])[:3]
         tile_ing = []
-        for row in ing[:5]:
-            tile_ing.append(f"{row.get('ingredient_type','Ingredient')}: {row.get('implication','')}")
-        tile_ing = tile_ing[:5]
+        for row in ing[:3]:
+            tile_ing.append(f"{row.get('ingredient_type','Ingredient')}: {row.get('implication','')}".strip())
 
-        st.markdown("<div class='section-header'>One-page strategy readout</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-label'>One-page readout</div>", unsafe_allow_html=True)
+
         r1c1, r1c2 = st.columns(2)
         with r1c1:
-            tile_block("Market Structure", "Branded vs private label + competitive roles", tile_market)
-            tile_controls("tile_market", "market")
+            card("Market Structure", "Branded vs private label + roles", tile_market, "View details", "mkt_view", "market")
         with r1c2:
-            tile_block("Occasions", "Three MECE occasions with slide headlines", tile_occ)
-            tile_controls("tile_occ", "occasions")
+            card("Occasions", "Three MECE cards (headlines)", tile_occ, "View details", "occ_view", "occasions")
 
         r2c1, r2c2 = st.columns(2)
         with r2c1:
-            tile_block("Claims Strategy", "Winning claims + opportunity claims", tile_claims)
-            tile_controls("tile_claims", "claims")
+            card("Claims Strategy", "What wins in-category", tile_claims, "View details", "clm_view", "claims")
         with r2c2:
-            tile_block("Ingredient Audit", "Key differences + why they matter", tile_ing)
-            tile_controls("tile_ing", "ingredients")
+            card("Ingredient Audit", "Differences that matter", tile_ing, "View details", "ing_view", "ingredients")
 
-        # ----------------------------
-        # Detail Drawer (single area)
-        # ----------------------------
-        st.divider()
+        st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+        # ==========================
+        # Details drawer (single area)
+        # ==========================
         panel = st.session_state.active_panel
-
         if not panel:
-            st.markdown("<div class='small-muted'>Tip: click “View details” on any tile to drill into evidence and tables.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='small-muted'>Click any tile to open details here.</div>", unsafe_allow_html=True)
 
         if panel:
             st.markdown("## Details")
-            st.markdown("<div class='small-muted'>This drawer changes based on the tile you selected.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='small-muted'>This drawer updates based on the tile you selected.</div>", unsafe_allow_html=True)
 
             if panel == "market":
-                st.markdown("### Market Structure")
+                st.markdown("### Market structure")
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.markdown("**Observations**")
@@ -681,25 +748,25 @@ IMPORTANT:
                     st.dataframe(m_df[["brands", "parent_company"]].drop_duplicates())
 
             elif panel == "occasions":
-                st.markdown("### Occasion Cards")
-                for card in occ:
-                    nm = card.get("occasion_name", "Occasion")
-                    hd = card.get("slide_headline", "")
+                st.markdown("### Occasion cards")
+                for card_obj in occ:
+                    nm = card_obj.get("occasion_name", "Occasion")
+                    hd = card_obj.get("slide_headline", "")
                     with st.expander(f"{nm} — {hd}", expanded=False):
-                        st.markdown(f"**Definition:** {card.get('definition','')}")
-                        st.markdown(f"**Who wins today:** {card.get('who_wins_today','')}")
+                        st.markdown(f"**Definition:** {card_obj.get('definition','')}")
+                        st.markdown(f"**Who wins today:** {card_obj.get('who_wins_today','')}")
                         st.markdown("**Winning offer**")
-                        for b in card.get("winning_offer", []):
+                        for b in card_obj.get("winning_offer", []):
                             st.write(f"• {b}")
                         st.markdown(f"**Gap for {my_brand}**")
-                        for b in card.get(f"gap_for_{my_brand}", []):
+                        for b in card_obj.get(f"gap_for_{my_brand}", []):
                             st.write(f"• {b}")
                         st.markdown(f"**Moves for {my_brand}**")
-                        for b in card.get(f"moves_for_{my_brand}", []):
+                        for b in card_obj.get(f"moves_for_{my_brand}", []):
                             st.write(f"• {b}")
 
             elif panel == "claims":
-                st.markdown("### Claims Strategy")
+                st.markdown("### Claims strategy")
                 c1, c2 = st.columns(2)
                 with c1:
                     st.markdown("**Category claims that win**")
@@ -716,7 +783,7 @@ IMPORTANT:
                     st.write(pd.DataFrame(patterns).to_html(index=False), unsafe_allow_html=True)
 
             elif panel == "ingredients":
-                st.markdown("### Ingredient Audit")
+                st.markdown("### Ingredient audit")
                 ing_list = result.get("ingredient_audit", [])
                 if ing_list:
                     ing_df = pd.DataFrame(ing_list)
@@ -740,9 +807,16 @@ IMPORTANT:
                 else:
                     st.markdown("<div class='small-muted'>No ingredient audit returned.</div>", unsafe_allow_html=True)
 
-            st.divider()
+            # Close details control
+            c_close1, c_close2, _ = st.columns([1, 1, 3])
+            with c_close1:
+                if st.button("Close details"):
+                    st.session_state.active_panel = None
+            with c_close2:
+                if st.button("Reset tiles"):
+                    st.session_state.active_panel = None
 
     else:
-        st.markdown("<div class='small-muted'>Generate a directive to populate the one-page tiles.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='small-muted'>Generate a directive to populate tiles.</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='small-muted'>Run a market scan to begin.</div>", unsafe_allow_html=True)
