@@ -128,8 +128,8 @@ def fetch_market_intelligence(category, api_key):
     
     status_text = st.empty()
     
-    # 5-Page Pagination for Depth (~500 SKUs)
-    for page in range(1, 6):
+    # 8-Page Pagination for Depth (~800 SKUs)
+    for page in range(1, 9):
         status_text.text(f"🚜 Scouting Page {page} via Category Tag...")
         url = f"https://world.openfoodfacts.org/cgi/search.pl?action=process&tagtype_0=categories&tag_contains_0=contains&tag_0={tech_tag}&tagtype_1=countries&tag_contains_1=contains&tag_1=United%20States&json=1&page_size=100&page={page}&fields=product_name,brands,countries_tags,ingredients_text,labels_tags,unique_scans_n,last_updated_t"
         try:
@@ -159,6 +159,20 @@ def fetch_market_intelligence(category, api_key):
         parent_map = get_canonical_parent_map(unique_messy, api_key)
     
     df['parent_company'] = df['brands'].map(parent_map).fillna(df['brands'])
+    
+    # Classify as Private Label vs Branded
+    private_label_keywords = [
+        'walmart', 'great value', 'kroger', 'costco', 'kirkland', 'amazon', 
+        'whole foods', '365', 'trader joe', 'target', 'good & gather', 
+        'aldi', 'safeway', 'albertsons', 'wegmans', 'publix', 'heb', 
+        'sam\'s choice', 'member\'s mark', 'marketside', 'simple truth'
+    ]
+    
+    df['is_private_label'] = df['parent_company'].str.lower().apply(
+        lambda x: any(keyword in str(x).lower() for keyword in private_label_keywords)
+    )
+    df['brand_type'] = df['is_private_label'].apply(lambda x: 'Private Label' if x else 'Branded')
+    
     return df
 
 def fetch_demographics(api_key, region):
@@ -288,17 +302,26 @@ if st.session_state.data_fetched:
             my_brand = st.selectbox("Select Your Brand Focus:", parent_list)
             
             entity_skus = m_df[m_df['parent_company'] == my_brand]
+            my_brand_type = entity_skus['brand_type'].iloc[0] if not entity_skus.empty else "Unknown"
+            
+            st.write(f"**Type:** {my_brand_type}")
             st.write(f"This entity controls **{len(entity_skus)} SKUs** in the current scan.")
             
-            # Calculate top competitors
+            # Calculate top 8 competitors (excluding selected brand)
             comp_df = m_df[m_df['parent_company'] != my_brand]
             if 'unique_scans_n' in comp_df.columns:
-                top_movers = comp_df.groupby('parent_company')['unique_scans_n'].sum().sort_values(ascending=False).head(5).index.tolist()
+                top_movers = comp_df.groupby('parent_company')['unique_scans_n'].sum().sort_values(ascending=False).head(8).index.tolist()
             else:
-                top_movers = comp_df['parent_company'].value_counts().head(5).index.tolist()
+                top_movers = comp_df['parent_company'].value_counts().head(8).index.tolist()
             
-            if top_movers:
-                st.info(f"**Top Competitors:** {', '.join(top_movers[:3])}")
+            # Separate branded vs private label competitors
+            top_branded = [b for b in top_movers if not m_df[m_df['parent_company'] == b]['is_private_label'].iloc[0]]
+            top_private = [b for b in top_movers if m_df[m_df['parent_company'] == b]['is_private_label'].iloc[0]]
+            
+            if top_branded:
+                st.info(f"**Top Branded Competitors:** {', '.join(top_branded[:5])}")
+            if top_private:
+                st.warning(f"**Private Label Competitors:** {', '.join(top_private[:3])}")
 
         with layout_col2:
             st.subheader("Share of Shelf (Top 10 Parents)")
@@ -316,51 +339,72 @@ if st.session_state.data_fetched:
 
                 def get_summary(b_name):
                     d = m_df[m_df['parent_company'] == b_name].head(5)
-                    summary = []
+                    brand_type = d['brand_type'].iloc[0] if not d.empty else "Unknown"
+                    summary = [f"TYPE: {brand_type}"]
                     for _, r in d.iterrows():
                         summary.append(f"Item: {r.get('product_name','')} | Claims: {r.get('labels_tags','')} | Ing: {str(r.get('ingredients_text',''))[:150]}...")
                     return "\n".join(summary)
 
+                # Separate top 8 competitors into branded and private label
+                comp_summaries = []
+                for comp in top_movers[:8]:
+                    comp_summaries.append(f"\n{comp}:\n{get_summary(comp)}")
+
                 prompt = f"""
-                ACT AS: Chief Strategy Officer. 
+                ACT AS: Chief Strategy Officer for a CPG Brand. 
                 CONSTRAINTS: You are aware that the data sources are imperfect (OpenFoodFacts is user-generated, Trends are limited to provided PDFs).
                 
                 CONTEXT: Analyzing '{TARGET_CATEGORY}' in '{TARGET_REGION}'.
                 
                 DATA: 
                 - Demographics: Income ${d_df['income'].mean():,.0f}, Poverty {d_df['poverty_rate'].mean():.1f}%
-                - MY BRAND: {my_brand} (Items: {get_summary(my_brand)})
-                - COMPETITORS: {top_movers} (Items: {chr(10).join([get_summary(c) for c in top_movers[:3]])})
+                - MY BRAND: {my_brand} ({my_brand_type})
+                  {get_summary(my_brand)}
+                
+                - TOP 8 COMPETITORS (Mix of Branded & Private Label):
+                  {chr(10).join(comp_summaries)}
+                
                 - TRENDS: {st.session_state.trends_text}
+                
+                CRITICAL INSTRUCTION: When analyzing competitors, DISTINGUISH between:
+                1. BRANDED competitors (Blue Diamond, Wonderful, Hormel, etc.) - focus on innovation, claims, ingredients
+                2. PRIVATE LABEL competitors (Walmart, Kroger, Costco/Kirkland) - focus on price positioning, "good enough" quality
                 
                 TASK: 
                 1. Identify 3 DISTINCT, Mutually Exclusive, Collectively Exhaustive (MECE) Consumer Occasions.
-                2. For EACH occasion, analyze the gaps.
+                2. For EACH occasion, analyze gaps against BOTH branded and private label where relevant.
                 
                 RETURN JSON ONLY with these keys:
                 
-                1. "executive_summary": A 2-sentence BLUF.
+                1. "executive_summary": A 2-3 sentence BLUF that acknowledges the competitive set includes both branded players and private label.
                 
                 2. "occasions_matrix": A list of 3 objects. Each object must have:
                    - "occasion_name": Title.
-                   - "competitor_leader": Name of the specific competitor winning this occasion.
-                   - "competitor_tactic": What specifically are they doing?
+                   - "competitor_leader": Name of the specific competitor winning this occasion (specify if branded or private label).
+                   - "competitor_tactic": What specifically are they doing? (If private label, mention price/value strategy).
                    - "my_gap": What specifically am I missing?
                    - "strategic_attribute": The key feature driving this occasion.
                 
-                3. "claims_strategy": {{"competitor_wins": "Specific claims they use", "my_gaps": "Claims I need"}}
+                3. "claims_strategy": {{
+                     "branded_competitor_wins": "Specific claims BRANDED competitors use",
+                     "private_label_approach": "How private label positions (if relevant)",
+                     "my_gaps": "Claims/positioning I need"
+                   }}
                 
-                4. "strategic_questions": A list of 3 strings. 
-                   - Ask difficult questions about Assortment or Pack Architecture based on the data.
+                4. "strategic_questions": A list of 3 strings asking difficult questions about:
+                   - How to compete against private label value perception
+                   - Assortment or Pack Architecture gaps vs branded competitors
+                   - Innovation opportunities that neither branded nor private label are addressing
                    
-                5. "ingredient_audit": A list of objects for a table.
-                   - "ingredient_type": (e.g., "Sweetener", "Preservative").
+                5. "ingredient_audit": A list of objects for a table (focus on BRANDED competitors for this):
+                   - "ingredient_type": (e.g., "Sweetener", "Preservative", "Protein Source").
                    - "my_brand": What I use.
-                   - "competitor_1": "Name: What they use".
-                   - "competitor_2": "Name: What they use".
-                   - "implication": "Why this matters".
+                   - "branded_competitor_1": "Name: What they use".
+                   - "branded_competitor_2": "Name: What they use".
+                   - "private_label_baseline": "What private label typically uses".
+                   - "implication": "Why this matters for differentiation".
                    
-                RETURN JSON ONLY.
+                RETURN ONLY JSON. NO MARKDOWN.
                 """
 
                 try:
@@ -397,7 +441,9 @@ if st.session_state.data_fetched:
                     with c1:
                         st.subheader("🏷️ Claims Strategy")
                         claims = result.get("claims_strategy", {})
-                        st.success(f"**Competitors Winning On:** {claims.get('competitor_wins', 'N/A')}")
+                        st.success(f"**Branded Competitors:** {claims.get('branded_competitor_wins', 'N/A')}")
+                        if claims.get('private_label_approach'):
+                            st.warning(f"**Private Label Strategy:** {claims.get('private_label_approach', 'N/A')}")
                         st.error(f"**Our Critical Gaps:** {claims.get('my_gaps', 'N/A')}")
                         
                     with c2:
@@ -420,8 +466,8 @@ if st.session_state.data_fetched:
         # --- AUDIT TRAIL ---
         st.divider()
         with st.expander("🔍 AI Data Normalization Audit"):
-            st.write("This table shows how messy brand data was consolidated into clean Parent Entities.")
-            audit_df = m_df[['brands', 'parent_company']].drop_duplicates()
+            st.write("This table shows how messy brand data was consolidated into clean Parent Entities and classified by type.")
+            audit_df = m_df[['brands', 'parent_company', 'brand_type']].drop_duplicates()
             st.dataframe(audit_df, use_container_width=True)
         
         # --- DATA REALITY CHECK ---
