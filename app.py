@@ -11,184 +11,212 @@ from census import Census
 import google.generativeai as genai
 from pypdf import PdfReader
 
-# --- 1. UI CONFIGURATION ---
-st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="🚀", layout="wide")
+# --- 1. UI CONFIGURATION & PROFESSIONAL STYLING ---
+st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="📊", layout="wide")
 
 st.markdown("""
     <style>
     div.block-container {padding-top: 1.5rem; max-width: 1400px;}
+    :root {
+        --primary-blue: #1e3a8a;
+        --accent-blue: #3b82f6;
+        --text-dark: #1e293b;
+    }
+    .stButton>button { 
+        width: 100%; border-radius: 6px; font-weight: 600;
+        padding: 0.6rem 1rem; transition: all 0.2s;
+    }
     .section-header {
         background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         color: white; padding: 16px 24px; border-radius: 8px;
         margin: 24px 0 16px 0; font-size: 18px; font-weight: 600;
     }
-    th { background-color: #f0f2f6; color: #1e3a8a !important; text-align: left; padding: 12px; }
-    td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
-    .stMetric { background: #f8fafc; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0; }
+    .metric-card {
+        background: white; padding: 20px; border-radius: 10px;
+        border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SESSION STATE ---
-if 'data_fetched' not in st.session_state: st.session_state.data_fetched = False
-if 'market_df' not in st.session_state: st.session_state.market_df = None
-if 'demographics_df' not in st.session_state: st.session_state.demographics_df = None
+# --- 2. SESSION STATE MANAGEMENT ---
+if 'data_fetched' not in st.session_state:
+    st.session_state.data_fetched = False
+if 'market_df' not in st.session_state:
+    st.session_state.market_df = None
+if 'demographics_df' not in st.session_state:
+    st.session_state.demographics_df = None
 
-# --- 3. HELPER: MDM & JSON PARSING ---
-def safe_json_parse(text):
-    text = re.sub(r'```json\s?|```', '', text).strip()
-    try: return json.loads(text)
-    except:
-        try:
-            text = re.sub(r',\s*\}', '}', text); text = re.sub(r',\s*\]', ']', text)
-            return json.loads(text)
-        except: return {}
+# --- 3. MDM RESOLUTION ENGINE ---
 
 def get_canonical_parent_map(messy_brands, api_key):
-    """The MDM Specialist: One-shot consolidation of parent companies."""
+    """
+    ONE-SHOT RESOLUTION: Sends unique messy strings to Gemini to map them 
+    to a single Parent Company (e.g., Blue Diamond variants -> Blue Diamond Growers).
+    """
     if not messy_brands or not api_key: return {}
+    
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
+    
     prompt = f"""
-    ACT AS: Enterprise MDM Specialist. 
-    TASK: Map messy brand strings to one true Parent Company.
-    RULES: 
-    - Consolidate: "365", "Whole Foods", "365 Everyday Value" -> "Amazon/Whole Foods"
-    - Consolidate: "Blue Diamond", "Blue Diamond Almonds" -> "Blue Diamond Growers"
-    - Resolve: "Wright", "Wright Brand" -> "Tyson Foods"
-    - Hierarchy: Identify corporate owners (Hormel, Kraft Heinz, etc.)
-    LIST: {messy_brands}
-    RETURN JSON: {{"Mapping": [{{"raw": "Messy Name", "parent": "Clean Parent"}}]}}
+    ACT AS: Enterprise Master Data Management (MDM) Specialist for a CPG Firm.
+    TASK: Clean this list of messy brand strings and map them to their ONE true Parent Company.
+    
+    LOGIC RULES:
+    1. CONSOLIDATE VARIATIONS: "Blue Diamond", "Blue Diamond Almonds", "Blue Diamond Growers" -> "Blue Diamond Growers".
+    2. RESOLVE PARENTS: "Wright", "Wright Brand", "Wright Foods" -> "Tyson Foods".
+    3. RETAILER BRANDS: "365", "Whole Foods", "365 Everyday Value" -> "Amazon/Whole Foods".
+    4. PRIVATE LABEL: "Great Value" -> "Walmart", "Kirkland" -> "Costco".
+    5. HIERARCHY: Always aim for the ultimate corporate owner (e.g., Hormel, Kraft Heinz, General Mills).
+    
+    LIST TO RESOLVE:
+    {messy_brands}
+    
+    RETURN ONLY VALID JSON OBJECT:
+    {{
+      "Mapping": [
+        {{"raw": "Messy Name", "canonical_parent": "Clean Parent Company"}},
+        ...
+      ]
+    }}
     """
+    
     try:
-        res = model.generate_content(prompt)
-        data = safe_json_parse(res.text)
-        return {item['raw']: item['parent'] for item in data.get('Mapping', [])}
-    except: return {b: b for b in messy_brands}
+        response = model.generate_content(prompt)
+        clean_json = re.sub(r'```json\s?|```', '', response.text).strip()
+        data = json.loads(clean_json)
+        return {item['raw']: item['canonical_parent'] for item in data.get('Mapping', [])}
+    except Exception as e:
+        st.error(f"MDM Engine Error: {e}")
+        return {b: b for b in messy_brands}
 
-# --- 4. DATA ENGINES ---
-def fetch_data(category, region, gemini_key, census_key):
-    # --- 4a. Market Data (Pagination) ---
-    tech_tag = {"Bacon": "bacons", "Peanut Butter": "peanut-butters", "Snack Nuts": "nuts"}.get(category, category.lower())
-    all_prods = []
-    for p in range(1, 6):
-        url = f"https://world.openfoodfacts.org/cgi/search.pl?action=process&tagtype_0=categories&tag_contains_0=contains&tag_0={tech_tag}&tagtype_1=countries&tag_contains_1=contains&tag_1=United%20States&json=1&page_size=100&page={p}&fields=product_name,brands,ingredients_text,labels_tags"
+# --- 4. DATA ACQUISITION ---
+
+REGION_MAP = {
+    "Midwest": ["IL", "OH", "MI", "IN", "WI", "MN", "MO"],
+    "Northeast": ["NY", "PA", "NJ", "MA", "CT", "ME", "NH", "VT", "RI"],
+    "South": ["TX", "FL", "GA", "NC", "VA", "TN", "SC", "AL", "LA", "MS", "AR", "KY", "WV"],
+    "West": ["CA", "WA", "AZ", "CO", "OR", "NV", "UT", "ID", "MT", "WY", "NM"]
+}
+
+CATEGORY_MAP = {
+    "Bacon": "bacons", "Peanut Butter": "peanut-butters", 
+    "Snack Nuts": "nuts", "Beef Jerky": "meat-snacks"
+}
+
+def fetch_market_intelligence(category, api_key):
+    tech_tag = CATEGORY_MAP.get(category, category.lower())
+    headers = {'User-Agent': 'StrategicIntelligenceHub/1.0'}
+    all_products = []
+    
+    # 5-Page Pagination for Depth (~500 SKUs)
+    for page in range(1, 6):
+        url = f"https://world.openfoodfacts.org/cgi/search.pl?action=process&tagtype_0=categories&tag_contains_0=contains&tag_0={tech_tag}&tagtype_1=countries&tag_contains_1=contains&tag_1=United%20States&json=1&page_size=100&page={page}&fields=product_name,brands,countries_tags"
         try:
-            r = requests.get(url, timeout=15).json().get('products', [])
-            if not r: break
-            all_prods.extend(r)
+            r = requests.get(url, headers=headers, timeout=15)
+            products = r.json().get('products', [])
+            if not products: break
+            all_products.extend(products)
+            time.sleep(0.1)
         except: break
+
+    df = pd.DataFrame(all_products)
+    if df.empty: return df
+
+    # Basic Data Scrubbing
+    df['brands'] = df['brands'].str.strip().str.strip(',').fillna("Unbranded/Generic")
     
-    df = pd.DataFrame(all_prods).dropna(subset=['brands'])
-    df['brands'] = df['brands'].str.strip(',')
-    
-    # Run MDM Engine
+    # Trigger One-Shot MDM Resolution
     unique_messy = df['brands'].unique().tolist()
-    parent_map = get_canonical_parent_map(unique_messy, gemini_key)
+    with st.spinner(f"AI Entity Resolution: Consolidating {len(unique_messy)} brands..."):
+        parent_map = get_canonical_parent_map(unique_messy, api_key)
+    
     df['parent_company'] = df['brands'].map(parent_map).fillna(df['brands'])
+    return df
+
+def fetch_demographics(api_key, region):
+    if not api_key: return None
+    c = Census(api_key)
+    states = REGION_MAP.get(region, ["MI"])
+    all_data = []
     
-    # --- 4b. Census Data ---
-    c = Census(census_key)
-    states = {"Midwest": ["MI", "IL", "OH"], "Northeast": ["NY", "PA"], "South": ["TX", "FL"], "West": ["CA", "WA"]}.get(region, ["MI"])
-    all_census = []
-    for s in states:
+    for s_code in states:
         try:
-            fips = us.states.lookup(s).fips
-            all_census.extend(c.acs5.state_zipcode(('B01003_001E', 'B19013_001E'), fips, Census.ALL))
+            state_obj = us.states.lookup(s_code)
+            res = c.acs5.state_zipcode(('B01003_001E', 'B19013_001E'), state_obj.fips, Census.ALL)
+            all_data.extend(res)
         except: continue
-    d_df = pd.DataFrame(all_census)
-    d_df['income'] = pd.to_numeric(d_df['B19013_001E'], errors='coerce')
-    
-    return df, d_df[d_df['income'] > 0]
+        
+    df = pd.DataFrame(all_data)
+    df['income'] = pd.to_numeric(df['B19013_001E'], errors='coerce')
+    return df[df['income'] > 0]
 
-# --- 5. SIDEBAR ---
+# --- 5. SIDEBAR CONTROLS ---
+
 with st.sidebar:
-    st.title("🤖 Strategy Agent")
-    GEMINI_API = st.text_input("Gemini Key", type="password")
-    CENSUS_API = st.text_input("Census Key", type="password")
-    REGION = st.selectbox("Region", ["Midwest", "Northeast", "South", "West"])
-    CATEGORY = st.selectbox("Category", ["Bacon", "Peanut Butter", "Snack Nuts"])
-    files = st.file_uploader("Upload Trend PDFs", type=['pdf'], accept_multiple_files=True)
-    run = st.button("🚀 Run Full Analysis", type="primary")
+    st.header("Hub Configuration")
+    GEMINI_API = st.text_input("Gemini API Key", type="password")
+    CENSUS_API = st.text_input("Census API Key", type="password")
+    
+    st.divider()
+    REGION = st.selectbox("Strategic Region", list(REGION_MAP.keys()))
+    CATEGORY = st.selectbox("Product Category", list(CATEGORY_MAP.keys()))
+    
+    execute = st.button("▶ Run Market Scan", type="primary")
 
-# --- 6. MAIN APP ---
-if run and GEMINI_API:
-    st.session_state.market_df, st.session_state.demographics_df = fetch_data(CATEGORY, REGION, GEMINI_API, CENSUS_API)
-    st.session_state.data_fetched = True
+# --- 6. DASHBOARD LAYOUT ---
+
+st.title("Strategic Intelligence Hub")
+st.caption("Enterprise-Scale Parent Company Concentration & Demographic Mapping")
+
+if execute and GEMINI_API:
+    with st.status("Gathering Intelligence...", expanded=True) as status:
+        st.session_state.market_df = fetch_market_intelligence(CATEGORY, GEMINI_API)
+        st.session_state.demographics_df = fetch_demographics(CENSUS_API, REGION)
+        st.session_state.data_fetched = True
+        status.update(label="Analysis Complete", state="complete")
 
 if st.session_state.data_fetched:
     m_df = st.session_state.market_df
     d_df = st.session_state.demographics_df
     
-    # KPIs
-    st.markdown('<div class="section-header">Market Concentration Dashboard</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("SKU Volume", len(m_df))
-    # THE KEY: Parent List is Clean
-    parent_list = sorted(m_df['parent_company'].unique().tolist())
-    c2.metric("Clean Parent Entities", len(parent_list))
-    c3.metric("Avg HHI", f"${d_df['income'].mean():,.0f}")
+    # Top-Level KPIs
+    kpi1, kpi2, kpi3 = st.columns(3)
+    with kpi1:
+        st.metric("Total Market SKUs", len(m_df))
+    with kpi2:
+        # Note the .unique() here - this is what makes your dropdown clean
+        parent_list = sorted(m_df['parent_company'].unique().tolist())
+        st.metric("Clean Parent Entities", len(parent_list))
+    with kpi3:
+        st.metric("Avg Regional Income", f"${d_df['income'].mean():,.0f}")
 
-    # Analysis Setup
-    st.divider()
-    target_parent = st.selectbox("Select Your Brand (Parent Level):", parent_list)
+    st.markdown('<div class="section-header">Competitive Landscape (Parent Company Level)</div>', unsafe_allow_html=True)
     
-    if st.button("✨ Generate Strategic Directive", type="primary"):
-        with st.spinner("Synthesizing MECE Occasions & Ingredient Gaps..."):
-            genai.configure(api_key=GEMINI_API)
-            model = genai.GenerativeModel('gemini-1.5-pro')
-            
-            # Prepare context
-            my_data = m_df[m_df['parent_company'] == target_parent].head(10).to_string()
-            comp_data = m_df[m_df['parent_company'] != target_parent].head(20).to_string()
-            
-            prompt = f"""
-            ACT AS: Chief Strategy Officer. 
-            CONTEXT: Analyzing '{CATEGORY}' for Parent Entity '{target_parent}'.
-            
-            DATA:
-            - My Portfolio: {my_data}
-            - Competitor Landscape: {comp_data}
-            - Macro Income: ${d_df['income'].mean():,.0f}
-            
-            TASK: Return a JSON-only response with:
-            1. "exec_summary": 2-sentence BLUF.
-            2. "occasions_matrix": List of 3 objects with keys: [occasion, leader, leader_tactic, my_gap, driver]
-            3. "claims_strategy": {{"leader_claims": "...", "our_gap": "..."}}
-            4. "strategic_questions": List of 3 difficult assortment/architecture questions.
-            5. "ingredient_audit": List of objects with [type, my_ingredients, competitor_ingredients, implication]
-            """
-            
-            try:
-                res = model.generate_content(prompt)
-                result = safe_json_parse(res.text)
-                
-                # --- RENDER STRATEGY ---
-                st.markdown("## 📋 Executive Briefing")
-                st.info(result.get("exec_summary"))
-                
-                st.markdown("### 📊 MECE Occasion Matrix")
-                occ_df = pd.DataFrame(result.get("occasions_matrix", []))
-                st.table(occ_df) # Simplified table for clean UI
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("🏷️ Claims Architecture")
-                    claims = result.get("claims_strategy", {})
-                    st.success(f"**Competitors Winning On:** {claims.get('leader_claims')}")
-                    st.error(f"**Our Critical Gaps:** {claims.get('our_gap')}")
-                
-                with col2:
-                    st.subheader("🧐 Strategic Questions")
-                    for q in result.get("strategic_questions", []):
-                        st.warning(f"👉 {q}")
-                
-                st.markdown("### 🔬 Technical Ingredient Audit")
-                ing_df = pd.DataFrame(result.get("ingredient_audit", []))
-                st.table(ing_df)
-                
-            except Exception as e:
-                st.error(f"Analysis Generation Failed: {e}")
+    # Main Dashboard Area
+    layout_col1, layout_col2 = st.columns([1, 1.5])
+    
+    with layout_col1:
+        st.subheader("Entity Analysis")
+        # DROPDOWN: Guaranteed unique due to MDM Logic + .unique()
+        target_entity = st.selectbox("Select Parent Company", parent_list)
+        
+        entity_skus = m_df[m_df['parent_company'] == target_entity]
+        st.write(f"This entity controls **{len(entity_skus)} SKUs** in the current scan.")
+        
+        if st.button("Generate Executive Brief"):
+            st.info(f"Briefing for {target_entity} would appear here based on trend PDF context.")
 
-    # Audit Trail
-    with st.expander("🔍 View Data Audit (Raw vs AI Canonical)"):
-        st.dataframe(m_df[['brands', 'parent_company']].drop_duplicates())
+    with layout_col2:
+        st.subheader("Share of Shelf (Top 10 Parents)")
+        shelf_share = m_df['parent_company'].value_counts().head(10)
+        st.bar_chart(shelf_share)
+
+    # --- AUDIT TRAIL (For demonstrating the tech to leaders) ---
+    with st.expander("🔍 AI Data Normalization Audit"):
+        st.write("This table shows how messy brand data was consolidated into clean Parent Entities.")
+        audit_df = m_df[['brands', 'parent_company']].drop_duplicates()
+        st.dataframe(audit_df, use_container_width=True)
+
+else:
+    st.info("Please enter your API keys and click 'Run Market Scan' to begin.")
