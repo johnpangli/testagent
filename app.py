@@ -56,7 +56,7 @@ def get_canonical_parent_map(messy_brands, api_key):
     if not messy_brands or not api_key: return {}
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     
     prompt = f"""
     ACT AS: Enterprise Master Data Management (MDM) Specialist for a CPG Firm.
@@ -220,3 +220,4 @@ if st.session_state.data_fetched:
 
 else:
     st.info("Please enter your API keys and click 'Run Market Scan' to begin.")
+
