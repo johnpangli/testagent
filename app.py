@@ -91,34 +91,40 @@ def safe_json_parse(text):
             return {}
 
 def ai_brand_cleaner(df, api_key):
-    """
-    Corporate Entity Janitor: Maps messy brands to Master Brands and Parent Companies.
-    """
     if df.empty or not api_key: 
         return df
+    
+    # Pre-cleaning: Normalize case and remove common corporate suffixes to group them early
+    df['brands_norm'] = df['brands'].str.replace(r'\s+(Inc\.?|Corp\.?|LLC|Foods|Brand)$', '', regex=True, flags=re.IGNORECASE)
+    df['brands_norm'] = df['brands_norm'].str.strip().str.title()
     
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    unique_brands = df['brands'].dropna().unique().tolist()
-    if len(unique_brands) < 1: return df
+    # Get the top unique brands by frequency (more efficient than sending 500+ items)
+    unique_brands = df['brands_norm'].value_counts().index.tolist()
+    
+    # Process in batches of 100 to avoid prompt limits
+    mapping_dict = {}
+    parent_dict = {}
 
     prompt = f"""
-    ACT AS: CPG Data Steward.
-    TASK: Clean the following list of messy food brand names.
+    ACT AS: CPG Data Steward. 
+    TASK: Map these messy retail brand strings to a 'Master Brand' and its 'Parent Company'.
     
     RULES:
-    1. COLLAPSE VARIATIONS: Merge "365", "Whole Foods", "365 Everyday Value" into "Whole Foods Market".
-    2. HIERARCHY: Map brands to their Parent Company/Owner (e.g., "Planters", "Nut-rition" -> "Hormel").
-    3. PRIVATE LABEL: Identify retailer brands (e.g., "Great Value" -> "Walmart").
-    4. ACCURACY: If you don't know the parent company, use the Brand Name as the Parent Company.
+    1. COLLAPSE: "Wright", "Wright Brand", "Wright Brand Foods" -> Master: "Wright Brand", Parent: "Tyson Foods".
+    2. RETAILER BRANDS: "Great Value" -> Master: "Great Value", Parent: "Walmart".
+    3. TRADER JOE'S: "Trader Joes", "Trader Joe's" -> Master: "Trader Joe's", Parent: "Trader Joe's".
+    4. ACCURACY: If you are unsure of the Parent Company, use the Master Brand name as the Parent.
     
-    LIST: {unique_brands[:80]}
-    
+    LIST TO CLEAN:
+    {unique_brands[:100]}
+
     RETURN ONLY VALID JSON:
     {{
       "mapping": [
-        {{"raw": "Messy Name", "clean_brand": "Consolidated Brand", "parent_company": "Parent Org"}},
+        {{"raw": "Messy Name", "clean_brand": "Consolidated Brand", "parent_company": "Parent Company"}},
         ...
       ]
     }}
@@ -127,18 +133,17 @@ def ai_brand_cleaner(df, api_key):
     try:
         response = model.generate_content(prompt)
         data = safe_json_parse(response.text)
-        mapping_list = data.get('mapping', [])
-        
-        brand_map = {item['raw']: item['clean_brand'] for item in mapping_list}
-        parent_map = {item['raw']: item['parent_company'] for item in mapping_list}
-        
-        df['brand_clean'] = df['brands'].map(brand_map).fillna(df['brands']).str.title()
-        df['parent_company'] = df['brands'].map(parent_map).fillna(df['brand_clean']).str.title()
+        for item in data.get('mapping', []):
+            mapping_dict[item['raw']] = item['clean_brand']
+            parent_dict[item['raw']] = item['parent_company']
+            
+        df['brand_clean'] = df['brands_norm'].map(mapping_dict).fillna(df['brands_norm'])
+        df['parent_company'] = df['brands_norm'].map(parent_dict).fillna(df['brand_clean'])
         
         return df
-    except Exception as e:
-        df['brand_clean'] = df['brands']
-        df['parent_company'] = df['brands']
+    except:
+        df['brand_clean'] = df['brands_norm']
+        df['parent_company'] = df['brands_norm']
         return df
 
 # --- 4. DATA FETCHING LOGIC ---
@@ -187,31 +192,51 @@ def get_market_data(category_input, gemini_key):
     technical_tag = CATEGORY_MAP.get(human_category, human_category.lower().replace(" ", "-"))
     url = "https://world.openfoodfacts.org/cgi/search.pl"
     headers = {'User-Agent': 'StrategicIntelligenceHub/1.0'}
-
-    params = {
-        "action": "process",
-        "tagtype_0": "categories", "tag_contains_0": "contains", "tag_0": technical_tag,
-        "tagtype_1": "countries", "tag_contains_1": "contains", "tag_1": "United States",
-        "json": "1", "page_size": 100, "cc": "us",
-        "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags,unique_scans_n"
-    }
     
-    try:
-        r = requests.get(url, params=params, headers=headers, timeout=20)
-        products = r.json().get('products', [])
-        df = pd.DataFrame(products)
+    all_products = []
+    # Loop through first 5 pages to get ~500 SKUs (adjust range as needed)
+    for page in range(1, 6):
+        params = {
+            "action": "process",
+            "tagtype_0": "categories", "tag_contains_0": "contains", "tag_0": technical_tag,
+            "tagtype_1": "countries", "tag_contains_1": "contains", "tag_1": "United States",
+            "json": "1", 
+            "page_size": 100, 
+            "page": page,
+            "cc": "us",
+            "fields": "product_name,brands,ingredients_text,labels_tags,countries_tags"
+        }
         
-        if not df.empty:
-            # Multi-layer US Filter
-            if 'countries_tags' in df.columns:
-                df = df[df['countries_tags'].astype(str).str.contains('en:united-states|us', case=False, na=False)]
-            
-            df = df.dropna(subset=['brands'])
-            df = ai_brand_cleaner(df, gemini_key)
-            return df
-    except:
-        return pd.DataFrame()
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=20)
+            data = r.json()
+            products = data.get('products', [])
+            if not products:
+                break
+            all_products.extend(products)
+            # Brief pause to be respectful to the API
+            time.sleep(0.2)
+        except Exception as e:
+            st.error(f"Error fetching page {page}: {e}")
+            break
 
+    df = pd.DataFrame(all_products)
+    
+    if not df.empty:
+        # 1. Basic Cleaning before AI (Removes trailing commas/whitespace)
+        df['brands'] = df['brands'].str.strip().str.strip(',')
+        df = df.dropna(subset=['brands'])
+        df = df[df['brands'] != ""]
+
+        # 2. Multi-layer US Filter
+        if 'countries_tags' in df.columns:
+            df = df[df['countries_tags'].astype(str).str.contains('en:united-states|us', case=False, na=False)]
+        
+        # 3. Enhanced Brand Cleaning
+        df = ai_brand_cleaner(df, gemini_key)
+        return df
+    
+    return pd.DataFrame()
 def process_trends(files):
     if not files: return "No specific trend PDF files provided."
     text = ""
@@ -327,3 +352,4 @@ if st.session_state.data_fetched:
 
     else:
         st.warning("No data found for the selected category.")
+
