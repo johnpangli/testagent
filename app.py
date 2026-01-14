@@ -70,26 +70,32 @@ def get_canonical_parent_map(messy_brands, api_key):
     if not messy_brands or not api_key: return {}
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3-flash-preview')
+    model = genai.GenerativeModel('gemini-2.0-flash-exp')
     
     prompt = f"""
     ACT AS: Enterprise Master Data Management (MDM) Specialist for a CPG Firm.
-    TASK: Clean this list of messy brand strings and map them to their ONE true Parent Company.
+    TASK: Clean this list of messy brand strings and map them to their ONE EXACT CANONICAL NAME.
     
-    LOGIC RULES:
-    1. CONSOLIDATE VARIATIONS: "Blue Diamond", "Blue Diamond Almonds", "Blue Diamond Growers" -> "Blue Diamond Growers".
-    2. RESOLVE PARENTS: "Wright", "Wright Brand", "Wright Foods" -> "Tyson Foods".
-    3. RETAILER BRANDS: "365", "Whole Foods", "365 Everyday Value" -> "Amazon/Whole Foods".
-    4. PRIVATE LABEL: "Great Value" -> "Walmart", "Kirkland" -> "Costco".
-    5. HIERARCHY: Always aim for the ultimate corporate owner (e.g., Hormel, Kraft Heinz, General Mills).
+    CRITICAL DEDUPLICATION RULES:
+    1. IDENTICAL MEANING = IDENTICAL OUTPUT: "365 Everyday Value", "365 Everyday Value, Whole Foods Market Inc.", "365", "Whole Foods" -> ALL map to "Whole Foods 365"
+    2. BRAND VARIATIONS: "Blue Diamond", "Blue Diamond Almonds", "Blue Diamond Growers" -> ALL map to "Blue Diamond"
+    3. PARENT COMPANY: "Wright", "Wright Brand" -> "Wright Brand"
+    4. PRIVATE LABEL: "Great Value" -> "Walmart", "Kirkland Signature", "Kirkland" -> "Costco Kirkland"
+    5. SPACING/PUNCTUATION: "JIF", "Jif", "J.I.F" -> "Jif"
+    
+    CRITICAL: The canonical_parent value must be IDENTICAL (character-for-character) for all variations of the same brand.
+    
+    EXCLUSION RULE: If a brand name seems completely unrelated to food (e.g., "PepsiCo" in bacon, "General Mills" in jerky), 
+    map it to "EXCLUDE_INVALID" - we'll filter these out.
     
     LIST TO RESOLVE:
     {messy_brands}
     
-    RETURN ONLY VALID JSON OBJECT:
+    RETURN ONLY VALID JSON OBJECT (no markdown, no explanation):
     {{
       "Mapping": [
-        {{"raw": "Messy Name", "canonical_parent": "Clean Parent Company"}},
+        {{"raw": "Messy Name 1", "canonical_parent": "Exact Clean Name"}},
+        {{"raw": "Messy Name 2", "canonical_parent": "Exact Clean Name"}},
         ...
       ]
     }}
@@ -160,6 +166,13 @@ def fetch_market_intelligence(category, api_key):
     
     df['parent_company'] = df['brands'].map(parent_map).fillna(df['brands'])
     
+    # Filter out invalid/irrelevant brands flagged by MDM
+    df = df[df['parent_company'] != 'EXCLUDE_INVALID']
+    
+    # CRITICAL: Additional deduplication pass - normalize to ensure dropdown cleanliness
+    # This catches any variations the LLM might have missed
+    df['parent_company'] = df['parent_company'].str.strip()
+    
     # Classify as Private Label vs Branded
     private_label_keywords = [
         'walmart', 'great value', 'kroger', 'costco', 'kirkland', 'amazon', 
@@ -172,6 +185,36 @@ def fetch_market_intelligence(category, api_key):
         lambda x: any(keyword in str(x).lower() for keyword in private_label_keywords)
     )
     df['brand_type'] = df['is_private_label'].apply(lambda x: 'Private Label' if x else 'Branded')
+    
+    # FINAL DEDUPLICATION: Aggressive cleanup for dropdown cleanliness
+    # This creates a canonical map for any remaining similar names
+    def create_final_canonical_map(parents):
+        """Last-pass deduplication: merge very similar parent names"""
+        canonical = {}
+        seen = {}
+        
+        for p in sorted(parents, key=lambda x: len(x)):  # Process shorter names first
+            p_clean = p.lower().strip()
+            p_clean = re.sub(r'[,.\s]+', '', p_clean)  # Remove punctuation and spaces
+            
+            # Check if we've seen something very similar
+            matched = False
+            for existing_clean, existing_original in seen.items():
+                # If 80%+ character overlap, they're the same brand
+                if len(set(p_clean) & set(existing_clean)) / len(set(p_clean) | set(existing_clean)) > 0.8:
+                    canonical[p] = existing_original
+                    matched = True
+                    break
+            
+            if not matched:
+                seen[p_clean] = p
+                canonical[p] = p
+        
+        return canonical
+    
+    unique_parents = df['parent_company'].unique()
+    final_map = create_final_canonical_map(unique_parents)
+    df['parent_company'] = df['parent_company'].map(final_map)
     
     return df
 
@@ -325,7 +368,7 @@ if st.session_state.data_fetched:
 
         with layout_col2:
             st.subheader("Share of Shelf (Top 10 Parents)")
-            shelf_share = m_df['parent_company'].value_counts().head(10)
+            shelf_share = m_df['parent_company'].value_counts().head(10).sort_values(ascending=False)
             st.bar_chart(shelf_share)
 
         # --- STRATEGIC INSIGHTS GENERATION ---
