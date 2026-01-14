@@ -378,7 +378,7 @@ if st.session_state.data_fetched:
         if st.button("✨ Generate Strategic Directive", type="primary"):
             with st.spinner("🧠 Synthesizing Strategy..."):
                 genai.configure(api_key=GEMINI_API)
-                model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                model = genai.GenerativeModel('gemini-2.5-flash')
 
                 def get_summary(b_name):
                     d = m_df[m_df['parent_company'] == b_name].head(5)
@@ -533,3 +533,4 @@ if st.session_state.data_fetched:
 
 else:
     st.info("👈 Please enter your API keys and click 'Run Market Scan' to begin.")
+
