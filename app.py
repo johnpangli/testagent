@@ -21,7 +21,7 @@ st.markdown("""
 html, body, [class*="css"] {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
-div.block-container { padding-top: 1.05rem; max-width: 1400px; }
+div.block-container { padding-top: 3.25rem; max-width: 1400px; }
 
 /* ----------------- Force app chrome to light gray ----------------- */
 /* Top header bar (Streamlit) */
@@ -76,11 +76,14 @@ h3 { font-size: 14px !important; margin: 0.65rem 0 0.25rem 0; letter-spacing: -0
   background: #fbfbfd !important;
 }
 button[kind="primary"] {
-  background: #111827 !important;
-  color: #ffffff !important;
-  border: 1px solid #111827 !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
 }
-button[kind="primary"]:hover { background: #0b1220 !important; }
+button[kind="primary"]:hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+}
 
 /* Reduce vertical spacing between blocks */
 div[data-testid="stVerticalBlock"] { gap: 0.55rem; }
@@ -858,3 +861,4 @@ RETURN JSON ONLY, EXACT SCHEMA:
 
 else:
     st.markdown("<div class='small-muted'>Run a scan to begin.</div>", unsafe_allow_html=True)
+
