@@ -11,42 +11,70 @@ import google.generativeai as genai
 from pypdf import PdfReader
 
 # =============================================================================
-# 1) PAGE CONFIG + CLEAN LIGHT UI (GOOGLE/APPLE-LIKE)
+# 1) PAGE CONFIG + CLEAN LIGHT UI
 # =============================================================================
-st.set_page_config(page_title="Strategic Intelligence Hub", page_icon="■", layout="wide")
+st.set_page_config(page_title="Product Intelligence Hub", page_icon="■", layout="wide")
 
 st.markdown("""
 <style>
-/* ---------- App background + typography ---------- */
+/* ----------------- Global typography ----------------- */
 html, body, [class*="css"] {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
+div.block-container { padding-top: 1.05rem; max-width: 1400px; }
+
+/* ----------------- Force app chrome to light gray ----------------- */
+/* Top header bar (Streamlit) */
+header[data-testid="stHeader"] {
+  background: #f6f7fb !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+/* Toolbar row (sometimes appears as a dark strip) */
+div[data-testid="stToolbar"] {
+  background: #f6f7fb !important;
+}
+/* Hide Streamlit deploy/menu/footer clutter (optional but cleaner) */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+div[data-testid="stDecoration"] { background: #f6f7fb !important; }
+
+/* App background */
 .stApp {
-  background: #f6f7fb; /* soft light gray */
+  background: #f6f7fb;
   color: #0f172a;
 }
-div.block-container { padding-top: 1.2rem; max-width: 1400px; }
 
-h1 { font-size: 26px !important; margin: 0.15rem 0 0.25rem 0; letter-spacing: -0.02em; }
+/* Sidebar background */
+section[data-testid="stSidebar"] {
+  background: #eef2f7 !important;
+  border-right: 1px solid #e5e7eb !important;
+}
+section[data-testid="stSidebar"] * {
+  color: #0f172a !important;
+}
+
+/* Headings */
+h1 { font-size: 24px !important; margin: 0.1rem 0 0.25rem 0; letter-spacing: -0.02em; }
 h2 { font-size: 16px !important; margin: 0.85rem 0 0.25rem 0; letter-spacing: -0.02em; }
 h3 { font-size: 14px !important; margin: 0.65rem 0 0.25rem 0; letter-spacing: -0.02em; }
 
-.small-muted { color: #64748b; font-size: 12px; line-height: 1.35; }
-.hr { height: 1px; background: #e5e7eb; margin: 14px 0; }
+.small-muted { color: #64748b !important; font-size: 12px; line-height: 1.35; }
+.hr { height: 1px; background: #e5e7eb; margin: 12px 0; }
 
-/* ---------- Buttons (compact, aligned) ---------- */
+/* ----------------- Buttons (tight + premium) ----------------- */
 .stButton>button {
+  width: 100%;
   border-radius: 12px !important;
   font-weight: 650 !important;
-  padding: 0.55rem 0.85rem !important;
+  padding: 0.5rem 0.85rem !important;
   border: 1px solid #e5e7eb !important;
   background: #ffffff !important;
   color: #0f172a !important;
 }
-.stButton>button:hover { border-color: #cbd5e1 !important; background: #fbfbfd !important; }
-.stButton>button:focus { outline: none !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important; }
-
-/* Primary button styling */
+.stButton>button:hover {
+  border-color: #cbd5e1 !important;
+  background: #fbfbfd !important;
+}
 button[kind="primary"] {
   background: #111827 !important;
   color: #ffffff !important;
@@ -54,17 +82,20 @@ button[kind="primary"] {
 }
 button[kind="primary"]:hover { background: #0b1220 !important; }
 
-/* ---------- Cards / Tiles ---------- */
+/* Reduce vertical spacing between blocks */
+div[data-testid="stVerticalBlock"] { gap: 0.55rem; }
+
+/* ----------------- Cards / Tiles ----------------- */
 .card {
   background: #ffffff;
   border: 1px solid #e6e8ef;
   border-radius: 16px;
-  padding: 16px 16px 14px 16px;
+  padding: 14px 14px 12px 14px;
   box-shadow: 0 1px 0 rgba(15,23,42,0.04);
 }
 .card-title {
   font-size: 13.5px;
-  font-weight: 750;
+  font-weight: 780;
   color: #0f172a;
   margin-bottom: 2px;
 }
@@ -78,48 +109,50 @@ button[kind="primary"]:hover { background: #0b1220 !important; }
   color: #0f172a;
   line-height: 1.35;
 }
-.card-bullets div { margin: 7px 0; }
-.card-footer {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-}
+.card-bullets div { margin: 6px 0; }
+.tight-controls { margin-top: -6px; } /* pulls buttons up closer */
 
-/* ---------- Section label (subtle, no gradients) ---------- */
+/* Section label (subtle) */
 .section-label {
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 11.5px;
+  font-weight: 800;
   color: #334155;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin: 12px 0 10px 2px;
+  margin: 10px 0 6px 2px;
 }
 
-/* ---------- Tables ---------- */
-table { width: 100%; border-collapse: collapse; }
+/* ----------------- Tables (light) ----------------- */
+table { width: 100%; border-collapse: collapse; background: #ffffff; }
 th {
   background: #f8fafc;
   color: #0f172a !important;
   text-align: left;
   padding: 10px;
-  font-weight: 750;
+  font-weight: 800;
   border-bottom: 1px solid #e5e7eb;
 }
 td {
   padding: 9px 10px;
+  color: #0f172a;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: top;
 }
 
-/* ---------- Expander header color fix ---------- */
+/* Expander summary + body (force light) */
+details {
+  background: #ffffff !important;
+  border: 1px solid #e6e8ef !important;
+  border-radius: 14px !important;
+  padding: 6px 10px !important;
+}
 details summary {
   color: #0f172a !important;
-  font-weight: 650 !important;
+  font-weight: 700 !important;
   font-size: 13px !important;
 }
 </style>
 """, unsafe_allow_html=True)
-
 
 # =============================================================================
 # 2) SESSION STATE
@@ -135,7 +168,7 @@ if "trends_text" not in st.session_state:
 
 # UI state
 if "active_panel" not in st.session_state:
-    st.session_state.active_panel = None  # "market" | "occasions" | "claims" | "ingredients"
+    st.session_state.active_panel = None  # "market" | "occasions" | "claims" | "ingredients" | "exec"
 if "directive_result" not in st.session_state:
     st.session_state.directive_result = None
 if "ui_locked" not in st.session_state:
@@ -150,11 +183,10 @@ if "sel_focus" not in st.session_state:
     st.session_state.sel_focus = None
 if "sel_competitors" not in st.session_state:
     st.session_state.sel_competitors = []
-if "show_top_entities" not in st.session_state:
-    st.session_state.show_top_entities = True  # auto-collapse later
 if "show_focus_block" not in st.session_state:
-    st.session_state.show_focus_block = True   # collapse after generate
-
+    st.session_state.show_focus_block = True
+if "show_top_entities" not in st.session_state:
+    st.session_state.show_top_entities = True
 
 # =============================================================================
 # 3) MDM ENTITY RESOLUTION (LOCKED TO GEMINI-3-FLASH-PREVIEW)
@@ -171,11 +203,11 @@ ACT AS: Enterprise Master Data Management (MDM) Specialist for a CPG Firm.
 TASK: Clean this list of messy brand strings and map them to their ONE true Parent Company.
 
 RULES:
-1) CONSOLIDATE VARIATIONS: "Blue Diamond", "Blue Diamond Almonds", "Blue Diamond Growers" -> "Blue Diamond Growers".
-2) RESOLVE PARENTS: "Wright", "Wright Brand", "Wright Foods" -> "Tyson Foods".
-3) RETAILER BRANDS: "365", "Whole Foods", "365 Everyday Value" -> "Amazon/Whole Foods".
-4) PRIVATE LABEL: "Great Value" -> "Walmart", "Kirkland" -> "Costco".
-5) HIERARCHY: Always aim for the ultimate corporate owner.
+1) CONSOLIDATE VARIATIONS (e.g., "Blue Diamond", "Blue Diamond Almonds" -> "Blue Diamond Growers").
+2) RESOLVE PARENTS (e.g., "Wright" -> "Tyson Foods").
+3) RETAILER BRANDS (e.g., "365" -> "Amazon/Whole Foods").
+4) PRIVATE LABEL (e.g., "Great Value" -> "Walmart", "Kirkland" -> "Costco").
+5) HIERARCHY: aim for ultimate corporate owner.
 
 LIST:
 {messy_brands}
@@ -195,7 +227,6 @@ RETURN JSON ONLY:
     except Exception as e:
         st.error(f"MDM Engine Error: {e}")
         return {b: b for b in messy_brands}
-
 
 # =============================================================================
 # 4) DATA ACQUISITION
@@ -220,7 +251,7 @@ CATEGORY_MAP = {
 
 def fetch_market_intelligence(category, gemini_key):
     tech_tag = CATEGORY_MAP.get(category, category.lower())
-    headers = {"User-Agent": "StrategicIntelligenceHub/4.0"}
+    headers = {"User-Agent": "ProductIntelligenceHub/1.0"}
     all_products = []
     status_text = st.empty()
 
@@ -254,14 +285,12 @@ def fetch_market_intelligence(category, gemini_key):
     df = df[~df["brands"].isin(["nan", "None", "", "Unknown", "null"])]
     df = df.drop_duplicates(subset=["product_name"])
 
-    # Entity resolution (MDM) — Gemini-3-Flash-Preview
     unique_messy = df["brands"].unique().tolist()
     with st.spinner(f"Normalizing entities ({len(unique_messy)} brands)…"):
         parent_map = get_canonical_parent_map(unique_messy, gemini_key)
 
     df["parent_company"] = df["brands"].map(parent_map).fillna(df["brands"])
     df["unique_scans_n"] = pd.to_numeric(df.get("unique_scans_n"), errors="coerce").fillna(0)
-
     return df
 
 def fetch_demographics(census_key, region):
@@ -303,9 +332,8 @@ def process_trends(files):
             pass
     return text[:15000]
 
-
 # =============================================================================
-# 4B) EVIDENCE + RENDER HELPERS (LESS IS MORE)
+# 4B) EVIDENCE HELPERS + LIGHT TABLE RENDERING
 # =============================================================================
 def _clean_str(x, max_len=260):
     if x is None:
@@ -320,13 +348,12 @@ def build_entity_evidence(df, entity, n=10):
         return []
     g = g.sort_values("unique_scans_n", ascending=False)
     g = g.dropna(subset=["product_name"]).head(n)
-
     items = []
     for _, r in g.iterrows():
         items.append({
-            "product_name": _clean_str(r.get("product_name"), 100),
-            "claims_tags": _clean_str(r.get("labels_tags"), 170),
-            "ingredients_snip": _clean_str(r.get("ingredients_text"), 240),
+            "product_name": _clean_str(r.get("product_name"), 110),
+            "claims_tags": _clean_str(r.get("labels_tags"), 180),
+            "ingredients_snip": _clean_str(r.get("ingredients_text"), 260),
         })
     return items
 
@@ -345,18 +372,24 @@ def bullets_html(xs):
         return "<br>".join([f"• {re.sub(r'<','&lt;', str(x))}" for x in xs if str(x).strip()])
     return re.sub(r"<", "&lt;", str(xs))
 
-def _truncate_bullet(s, max_len=110):
+def html_table(df: pd.DataFrame, max_rows: int = 200):
+    """Force a light table (avoids st.dataframe dark-theme issues)."""
+    if df is None or df.empty:
+        st.markdown("<div class='small-muted'>No rows.</div>", unsafe_allow_html=True)
+        return
+    df2 = df.copy()
+    if len(df2) > max_rows:
+        df2 = df2.head(max_rows)
+        st.markdown(f"<div class='small-muted'>Showing first {max_rows} rows.</div>", unsafe_allow_html=True)
+    st.write(df2.to_html(index=False, escape=False), unsafe_allow_html=True)
+
+def _truncate(s, n=110):
     s = str(s).strip()
-    if len(s) <= max_len:
-        return s
-    return s[:max_len-1].rstrip() + "…"
+    return s if len(s) <= n else (s[: n - 1].rstrip() + "…")
 
-def card(title, subtitle, bullets, primary_button_label, primary_key, panel_name):
-    # bullets: keep it tight (3 max)
-    bullets = [b for b in bullets if str(b).strip()]
-    bullets = bullets[:3]
-    bullets_html_str = "".join([f"<div>• {_truncate_bullet(b, 120)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
-
+def tile(title, subtitle, bullets, view_key, panel_name):
+    bullets = [b for b in bullets if str(b).strip()][:3]  # less is more
+    bullets_html_str = "".join([f"<div>• {_truncate(b, 140)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
     st.markdown(f"""
     <div class="card">
       <div class="card-title">{title}</div>
@@ -365,26 +398,25 @@ def card(title, subtitle, bullets, primary_button_label, primary_key, panel_name
     </div>
     """, unsafe_allow_html=True)
 
-    # controls inside a clean row (no weird spacing)
+    # Tighter controls (buttons feel attached to tile)
+    st.markdown('<div class="tight-controls"></div>', unsafe_allow_html=True)
     c1, c2 = st.columns([1, 1])
     with c1:
-        if st.button(primary_button_label, key=primary_key):
+        if st.button("View details", key=f"{view_key}_view"):
             st.session_state.active_panel = panel_name
     with c2:
-        if st.button("Hide", key=f"{primary_key}_hide"):
+        if st.button("Hide", key=f"{view_key}_hide"):
             if st.session_state.active_panel == panel_name:
                 st.session_state.active_panel = None
-
 
 # =============================================================================
 # 5) SIDEBAR (LOCK AFTER DIRECTIVE)
 # =============================================================================
 with st.sidebar:
-    st.markdown("## Strategy Agent")
-    st.markdown("<div class='small-muted'>Run scan → pick focus → generate directive → present one-page tiles.</div>", unsafe_allow_html=True)
+    st.markdown("## Product Intelligence Agent")
+    st.markdown("<div class='small-muted'>Run scan → pick focus → generate → one-page readout.</div>", unsafe_allow_html=True)
     st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-    # Store these in locals so main logic can use them (even after lock we show None)
     GEMINI_API = None
     CENSUS_API = None
     uploaded_files = None
@@ -396,17 +428,17 @@ with st.sidebar:
 
         st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-        st.session_state.sel_region = st.selectbox("Region", list(REGION_MAP.keys()),
-                                                   index=list(REGION_MAP.keys()).index(st.session_state.sel_region)
-                                                   if st.session_state.sel_region in REGION_MAP else 0)
         st.session_state.sel_category = st.selectbox("Category", list(CATEGORY_MAP.keys()),
                                                      index=list(CATEGORY_MAP.keys()).index(st.session_state.sel_category)
                                                      if st.session_state.sel_category in CATEGORY_MAP else 0)
+        st.session_state.sel_region = st.selectbox("Region", list(REGION_MAP.keys()),
+                                                   index=list(REGION_MAP.keys()).index(st.session_state.sel_region)
+                                                   if st.session_state.sel_region in REGION_MAP else 0)
 
         uploaded_files = st.file_uploader("Trend PDFs (optional)", type=["pdf"], accept_multiple_files=True)
+        execute = st.button("Run scan", type="primary")
 
-        execute = st.button("Run market scan", type="primary")
-        st.markdown("<div class='small-muted'>Cleaning: gemini-3-flash-preview · Strategy: gemini-2.5-pro</div>", unsafe_allow_html=True)
+        st.markdown("<div class='small-muted'>Cleaning: gemini-3-flash-preview • Analysis: gemini-2.5-pro</div>", unsafe_allow_html=True)
     else:
         st.markdown("**Selections**")
         st.write(f"Category: **{st.session_state.sel_category}**")
@@ -424,20 +456,16 @@ with st.sidebar:
             st.session_state.show_focus_block = True
             st.session_state.show_top_entities = True
 
-
 # =============================================================================
 # 6) MAIN
 # =============================================================================
-st.markdown("# Strategic Intelligence Hub")
-st.markdown("<div class='small-muted'>One-page tiles. Click any tile to drill down in the details drawer.</div>", unsafe_allow_html=True)
+st.markdown("# Product Intelligence Hub")
+st.markdown("<div class='small-muted'>One-page tiles. Click a tile to open the details drawer.</div>", unsafe_allow_html=True)
 
 # Run scan
 if execute:
-    if not GEMINI_API:
-        st.error("Please provide a Gemini API key.")
-        st.stop()
-    if not CENSUS_API:
-        st.error("Please provide a Census API key.")
+    if not GEMINI_API or not CENSUS_API:
+        st.error("Please provide both Gemini and Census API keys.")
         st.stop()
 
     with st.status("Working…", expanded=True) as status:
@@ -453,7 +481,6 @@ if execute:
         st.session_state.data_fetched = True
         status.update(label="Data ready", state="complete")
 
-# If we have data
 if st.session_state.data_fetched:
     m_df = st.session_state.market_df
     d_df = st.session_state.demographics_df
@@ -465,82 +492,61 @@ if st.session_state.data_fetched:
         st.error("No census data returned.")
         st.stop()
 
-    # KPI row (tight)
+    # KPIs (keep subtle)
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("SKUs", len(m_df))
     parent_list = sorted(m_df["parent_company"].dropna().unique().tolist())
+    k1.metric("SKUs", len(m_df))
     k2.metric("Entities", len(parent_list))
     k3.metric("Avg income", f"${d_df['income'].mean():,.0f}")
     k4.metric("Poverty", f"{d_df['poverty_rate'].mean():.1f}%")
 
     st.markdown("<div class='section-label'>Market snapshot</div>", unsafe_allow_html=True)
 
-    # Focus selection block (auto-hide later)
+    # Focus selection block (hide after generate)
     if st.session_state.show_focus_block and not st.session_state.ui_locked:
-        focus_card = st.container()
-        with focus_card:
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                my_brand = st.selectbox(
-                    "Focus entity",
-                    parent_list,
-                    index=0 if (st.session_state.sel_focus is None or st.session_state.sel_focus not in parent_list)
-                    else parent_list.index(st.session_state.sel_focus),
-                )
-                # Persist focus selection immediately
-                st.session_state.sel_focus = my_brand
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            my_brand = st.selectbox(
+                "Focus entity",
+                parent_list,
+                index=0 if (st.session_state.sel_focus is None or st.session_state.sel_focus not in parent_list)
+                else parent_list.index(st.session_state.sel_focus),
+            )
+            st.session_state.sel_focus = my_brand
+            # collapse top entities after focus chosen
+            st.session_state.show_top_entities = False
+        with c2:
+            st.markdown("<div class='small-muted' style='padding-top: 1.65rem;'>Pick the focal entity. Then generate insights.</div>", unsafe_allow_html=True)
 
-                # AUTO-COLLAPSE: once a focus is chosen, collapse the "Top entities" expander
-                st.session_state.show_top_entities = False
-
-            with c2:
-                st.markdown("<div class='small-muted' style='padding-top: 1.6rem;'>Pick the focal entity. Then generate a directive.</div>", unsafe_allow_html=True)
-
-            # optional: show top entities expander only before focus selection
-            if st.session_state.show_top_entities:
-                with st.expander("Top entities (SKU count)", expanded=True):
-                    st.bar_chart(m_df["parent_company"].value_counts().head(10))
-            else:
-                with st.expander("Top entities (SKU count)", expanded=False):
-                    st.bar_chart(m_df["parent_company"].value_counts().head(10))
+        # Optional expander (defaults collapsed after focus)
+        with st.expander("Top entities (SKU count)", expanded=st.session_state.show_top_entities):
+            st.bar_chart(m_df["parent_company"].value_counts().head(10))
     else:
-        # If locked or focus block hidden, use stored selection
         my_brand = st.session_state.sel_focus or (parent_list[0] if parent_list else None)
 
-    # Competitor list (by presence)
     comp_list = (
         m_df[m_df["parent_company"] != my_brand]["parent_company"]
-        .value_counts()
-        .head(6)
-        .index.tolist()
+        .value_counts().head(6).index.tolist()
         if my_brand else []
     )
 
-    st.markdown("<div class='section-label'>Strategy directive</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-label'>Directive</div>", unsafe_allow_html=True)
 
-    # Generate button row (compact)
-    c_gen1, c_gen2, c_gen3 = st.columns([1.2, 1.4, 1.4])
+    # Generate row (compact)
+    c_gen1, c_gen2 = st.columns([1, 3])
     with c_gen1:
-        generate = st.button("Generate directive", type="primary", disabled=st.session_state.ui_locked or (not execute and GEMINI_API is None and not st.session_state.ui_locked))
+        generate = st.button("Generate", type="primary", disabled=st.session_state.ui_locked)
     with c_gen2:
-        st.markdown("<div class='small-muted'>Strategy model: gemini-2.5-pro (deeper reasoning)</div>", unsafe_allow_html=True)
-    with c_gen3:
-        st.markdown("<div class='small-muted'>Evidence: SKU/claims/ingredients + optional trend PDFs</div>", unsafe_allow_html=True)
+        st.markdown("<div class='small-muted'>Generates second-order insights (evidence → inference → implication). Includes claim feasibility checks.</div>", unsafe_allow_html=True)
 
-    # Use existing directive if present
     result = st.session_state.directive_result
 
-    # Generate directive (needs GEMINI_API, so if sidebar is locked, directive already exists)
     if generate:
-        # Lock selections after generation
         st.session_state.sel_focus = my_brand
         st.session_state.sel_competitors = comp_list
         st.session_state.ui_locked = True
-
-        # Hide focus selection block after generation (as you requested)
         st.session_state.show_focus_block = False
 
-        # Strategy model: Gemini-2.5-Pro
         genai.configure(api_key=GEMINI_API)
         model = genai.GenerativeModel("gemini-2.5-pro")
 
@@ -551,272 +557,304 @@ if st.session_state.data_fetched:
 
         total_skus = len(m_df)
         my_skus = len(m_df[m_df["parent_company"] == my_brand])
+        trends = st.session_state.trends_text or ""
 
         prompt = f"""
-ACT AS: Chief Strategy Officer for a CPG firm.
-GOAL: Produce strategy that can expand into slides (clear headers, MECE structure, specific proof points).
-CONSTRAINTS:
-- Use only the evidence provided (OpenFoodFacts SKU snippets + uploaded trend PDFs + Census summary).
-- Avoid generic CPG fluff. If evidence is weak, say so and propose what data you’d request next (POS, retailer, etc.).
-- Keep each text field max 2 sentences unless it's a list. Prefer lists over paragraphs.
+ACT AS: Product Intelligence Lead for a CPG portfolio.
+GOAL: Produce insights that are "second-order": not obvious observations, but evidence-led inferences and implications.
+
+HARD RULES:
+1) Each insight must be structured as:
+   - "observation": what the dataset shows (1 sentence)
+   - "evidence": 2–3 proof points from the SKU snippets (explicit examples like product names, claims tags, ingredient snippets)
+   - "inference": what it likely means (1 sentence, causal language)
+   - "implication": so what / what decision it changes (1 sentence)
+2) Do NOT state trivialities ("we all sell peanuts"). If the observation is obvious, elevate it to a second-order implication.
+3) Claims recommendations MUST be feasible:
+   - If ingredients/labels indicate a claim is blocked (e.g., gelatin conflicts with vegan), mark it "blocked" and say why.
+   - Provide "what would need to change" to unlock it (reformulation, label substantiation, certification, etc.).
+4) If evidence is weak, say so and specify the missing data (POS, retailer item file, claims validation, etc.).
 
 CONTEXT:
 - Category: {st.session_state.sel_category}
 - Region: {st.session_state.sel_region}
-- Category dataset size (SKUs pulled): {total_skus}
-- Focus entity: {my_brand} (SKUs observed: {my_skus})
-- Demographics: Avg Income ${d_df['income'].mean():,.0f}, Avg Poverty {d_df['poverty_rate'].mean():.1f}%
+- Dataset size: {total_skus} SKUs
+- Focus entity: {my_brand} ({my_skus} observed SKUs)
+- Demographics: Avg Income ${d_df['income'].mean():,.0f}, Poverty {d_df['poverty_rate'].mean():.1f}%
 
-EVIDENCE — MY ENTITY (SKU / Claims / Ingredients):
+EVIDENCE — FOCUS ENTITY SKU SNIPPETS:
 {my_evidence_txt}
 
-EVIDENCE — TOP COMPETITORS (SKU / Claims / Ingredients):
+EVIDENCE — TOP COMPETITORS SKU SNIPPETS:
 {comp_evidence_txt}
 
-TRENDS (from PDFs; may be empty):
-{st.session_state.trends_text}
+TRENDS (PDF snippets; may be empty):
+{trends}
 
-TASK: Return JSON ONLY (no markdown) with this EXACT schema:
+RETURN JSON ONLY, EXACT SCHEMA:
 
 {{
   "executive_summary": {{
-    "bluf": "2 sentences max, crisp.",
-    "what_we_know": ["3 bullets grounded in evidence"],
-    "what_we_dont_know": ["2 bullets: data gaps / risks"]
+    "bluf": "2 sentences max",
+    "key_insights": [
+      {{
+        "observation": "…",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
+      }}
+    ],
+    "gaps_and_risks": ["…","…"]
   }},
   "market_structure": {{
-    "branded_vs_private_label": {{
-      "observations": ["3 bullets: how private label vs branded appears in THIS dataset"],
-      "implications": ["3 bullets: what it means strategically"],
-      "watchouts": ["2 bullets: data limitations or possible misclassification"]
-    }},
-    "competitive_arena": [
+    "branded_vs_private_label": [
+      {{
+        "observation": "…",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
+      }}
+    ],
+    "competitive_roles": [
       {{
         "entity": "name",
         "role": "incumbent | premium | value | retailer_brand | niche",
-        "proof_points": ["3 bullets referencing evidence patterns (claims/ingredients/product types)"]
+        "proof_points": ["…","…","…"]
       }}
     ]
   }},
   "occasion_cards": [
     {{
       "occasion_name": "short title",
-      "definition": "1 sentence: what the shopper is doing / why",
-      "who_wins_today": "competitor or private label",
-      "winning_offer": ["3 bullets: claims, ingredients, formats, pack cues inferred from evidence"],
-      "gap_for_{my_brand}": ["3 bullets: what we're missing"],
-      "moves_for_{my_brand}": ["5 bullets: specific actions (claims, ingredients, pack architecture, price/pack, channel)"],
-      "slide_headline": "one slide headline you’d put on a deck"
-    }},
-    {{
-      "occasion_name": "...",
-      "definition": "...",
-      "who_wins_today": "...",
-      "winning_offer": ["..."],
-      "gap_for_{my_brand}": ["..."],
-      "moves_for_{my_brand}": ["..."],
-      "slide_headline": "..."
-    }},
-    {{
-      "occasion_name": "...",
-      "definition": "...",
-      "who_wins_today": "...",
-      "winning_offer": ["..."],
-      "gap_for_{my_brand}": ["..."],
-      "moves_for_{my_brand}": ["..."],
-      "slide_headline": "..."
+      "slide_headline": "short headline",
+      "definition": "1 sentence",
+      "who_wins_today": "entity/private label",
+      "winning_offer": ["3 bullets"],
+      "gap_for_{my_brand}": ["3 bullets"],
+      "moves_for_{my_brand}": ["5 bullets (must be specific)"]
     }}
   ],
   "claims_strategy": {{
-    "category_claims_that_win": ["5 bullets"],
-    "competitor_claim_patterns": [
+    "category_claim_patterns": [
       {{
-        "entity": "name",
-        "claims": ["3 bullets"],
-        "proof_points": ["2 bullets referencing evidence"]
+        "pattern": "e.g., gluten-free as mainstream trust cue",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
       }}
     ],
-    "opportunity_claims_for_{my_brand}": ["5 bullets"]
+    "opportunity_claims_for_{my_brand}": [
+      {{
+        "claim": "…",
+        "status": "feasible | blocked | unclear",
+        "why": "1 sentence",
+        "evidence_or_conflict": ["…","…"],
+        "what_would_need_to_change": ["…","…"],
+        "when_to_use": "occasion / segment"
+      }}
+    ]
   }},
   "ingredient_audit": [
     {{
-      "ingredient_type": "e.g., sweetener | oil | preservative | protein source | flavor system | allergen cue",
-      "{my_brand}": ["3 bullets of observed examples"],
-      "competitor_1": {{
-        "entity": "name",
-        "examples": ["3 bullets"]
+      "ingredient_type": "e.g., sweetener | oil | preservative | flavor system | allergen cue",
+      "insight": {{
+        "observation": "…",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
       }},
-      "competitor_2": {{
-        "entity": "name",
-        "examples": ["3 bullets"]
-      }},
-      "implication": "1 sentence max"
+      "{my_brand}_examples": ["…","…","…"],
+      "competitor_examples": [
+        {{"entity":"…","examples":["…","…","…"]}}
+      ]
     }}
   ],
-  "strategic_questions": [
-    "3 hard questions (pack architecture / assortment / price-pack / channel)"
-  ]
+  "strategic_questions": ["…","…","…"]
 }}
-
-IMPORTANT:
-- Use real competitor names from the competitor list when possible.
-- If you can’t find evidence for a claim/ingredient, label it as 'Not observed in evidence' rather than inventing.
 """
-
         try:
-            with st.spinner("Generating strategy…"):
+            with st.spinner("Generating…"):
                 response = model.generate_content(prompt)
             res_txt = re.sub(r"```json\s?|```", "", response.text).strip()
             result = json.loads(res_txt)
             st.session_state.directive_result = result
         except Exception as e:
-            st.error(f"Strategy generation failed: {e}")
+            st.error(f"Generation failed: {e}")
             st.stop()
 
     # ==========================
-    # One-page tiles (2×2 grid)
+    # One-page tiles
     # ==========================
     if result:
         es = result.get("executive_summary", {})
         ms = result.get("market_structure", {})
-        bpl = ms.get("branded_vs_private_label", {})
+        bpl = ms.get("branded_vs_private_label", [])
         occ = result.get("occasion_cards", [])
         cs = result.get("claims_strategy", {})
         ing = result.get("ingredient_audit", [])
 
-        # Tile bullets (tight)
-        tile_market = (bpl.get("observations", [])[:2] + bpl.get("implications", [])[:1])
+        # Less text: pull just 2-3 “implications” style snippets for tiles
+        def _tile_from_insights(insights, take=3):
+            out = []
+            for it in (insights or [])[:take]:
+                # prefer implication (second-order)
+                imp = it.get("implication", "")
+                inf = it.get("inference", "")
+                if imp:
+                    out.append(imp)
+                elif inf:
+                    out.append(inf)
+                else:
+                    out.append(it.get("observation", ""))
+            return out[:take]
+
+        tile_exec = _tile_from_insights(es.get("key_insights", []), take=3)
+        tile_market = _tile_from_insights(bpl, take=3)
+
         tile_occ = []
         for c in occ[:3]:
-            nm = c.get("occasion_name", "Occasion")
-            hd = c.get("slide_headline", "")
-            tile_occ.append(f"{nm} — {hd}".strip(" —"))
-        tile_claims = cs.get("category_claims_that_win", [])[:3]
+            tile_occ.append(f"{c.get('occasion_name','Occasion')}: {c.get('slide_headline','')}".strip().strip(":"))
+        tile_occ = tile_occ[:3]
+
+        patterns = cs.get("category_claim_patterns", [])
+        tile_claims = _tile_from_insights(patterns, take=3)
+
         tile_ing = []
         for row in ing[:3]:
-            tile_ing.append(f"{row.get('ingredient_type','Ingredient')}: {row.get('implication','')}".strip())
+            insight = (row.get("insight") or {})
+            tile_ing.append(insight.get("implication") or insight.get("inference") or insight.get("observation") or "")
+        tile_ing = [t for t in tile_ing if t][:3]
 
         st.markdown("<div class='section-label'>One-page readout</div>", unsafe_allow_html=True)
 
+        r0c1, r0c2 = st.columns(2)
+        with r0c1:
+            tile("Executive summary", "Second-order insights (so what)", tile_exec, "exec", "exec")
+        with r0c2:
+            tile("Market structure", "Branded vs private label dynamics", tile_market, "market", "market")
+
         r1c1, r1c2 = st.columns(2)
         with r1c1:
-            card("Market Structure", "Branded vs private label + roles", tile_market, "View details", "mkt_view", "market")
+            tile("Occasions", "Where value concentrates", tile_occ, "occ", "occasions")
         with r1c2:
-            card("Occasions", "Three MECE cards (headlines)", tile_occ, "View details", "occ_view", "occasions")
+            tile("Claims strategy", "Feasible + defensible plays", tile_claims, "claims", "claims")
 
         r2c1, r2c2 = st.columns(2)
         with r2c1:
-            card("Claims Strategy", "What wins in-category", tile_claims, "View details", "clm_view", "claims")
+            tile("Ingredient audit", "Drivers of perceived quality / cost", tile_ing, "ing", "ingredients")
         with r2c2:
-            card("Ingredient Audit", "Differences that matter", tile_ing, "View details", "ing_view", "ingredients")
+            # a lightweight tile to open mapping audit (no black dataframe)
+            tile("Entity normalization", "Validate mappings before presenting", ["Spot-check surprising parents (e.g., PepsiCo in nuts) before using counts."], "map", "mapping")
 
         st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
         # ==========================
-        # Details drawer (single area)
+        # Details drawer
         # ==========================
         panel = st.session_state.active_panel
         if not panel:
-            st.markdown("<div class='small-muted'>Click any tile to open details here.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='small-muted'>Click any tile to open detail here.</div>", unsafe_allow_html=True)
 
         if panel:
             st.markdown("## Details")
-            st.markdown("<div class='small-muted'>This drawer updates based on the tile you selected.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='small-muted'>Observation → Evidence → Inference → Implication</div>", unsafe_allow_html=True)
 
-            if panel == "market":
+            if panel == "exec":
+                st.markdown("### Executive summary")
+                st.info(es.get("bluf", ""))
+                for i, it in enumerate(es.get("key_insights", []), start=1):
+                    with st.expander(f"Insight {i}", expanded=(i == 1)):
+                        st.markdown(f"**Observation:** {it.get('observation','')}")
+                        st.markdown("**Evidence:**")
+                        for ev in it.get("evidence", []):
+                            st.write(f"• {ev}")
+                        st.markdown(f"**Inference:** {it.get('inference','')}")
+                        st.markdown(f"**Implication:** {it.get('implication','')}")
+                st.markdown("**Gaps & risks**")
+                for g in es.get("gaps_and_risks", []):
+                    st.write(f"• {g}")
+
+            elif panel == "market":
                 st.markdown("### Market structure")
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.markdown("**Observations**")
-                    for b in bpl.get("observations", []):
-                        st.write(f"• {b}")
-                with c2:
-                    st.markdown("**Implications**")
-                    for b in bpl.get("implications", []):
-                        st.write(f"• {b}")
-                with c3:
-                    st.markdown("**Watchouts**")
-                    for b in bpl.get("watchouts", []):
-                        st.write(f"• {b}")
-
-                arena = ms.get("competitive_arena", [])
-                if arena:
-                    st.markdown("**Competitive arena**")
-                    st.write(pd.DataFrame(arena).to_html(index=False), unsafe_allow_html=True)
-
-                with st.expander("Entity mapping audit (raw brand → parent)", expanded=False):
-                    st.dataframe(m_df[["brands", "parent_company"]].drop_duplicates())
+                for i, it in enumerate(bpl, start=1):
+                    with st.expander(f"Dynamic {i}", expanded=(i == 1)):
+                        st.markdown(f"**Observation:** {it.get('observation','')}")
+                        st.markdown("**Evidence:**")
+                        for ev in it.get("evidence", []):
+                            st.write(f"• {ev}")
+                        st.markdown(f"**Inference:** {it.get('inference','')}")
+                        st.markdown(f"**Implication:** {it.get('implication','')}")
+                roles = ms.get("competitive_roles", [])
+                if roles:
+                    st.markdown("### Competitive roles")
+                    html_table(pd.DataFrame(roles))
 
             elif panel == "occasions":
                 st.markdown("### Occasion cards")
-                for card_obj in occ:
-                    nm = card_obj.get("occasion_name", "Occasion")
-                    hd = card_obj.get("slide_headline", "")
-                    with st.expander(f"{nm} — {hd}", expanded=False):
-                        st.markdown(f"**Definition:** {card_obj.get('definition','')}")
-                        st.markdown(f"**Who wins today:** {card_obj.get('who_wins_today','')}")
+                for c in occ:
+                    with st.expander(f"{c.get('occasion_name','Occasion')} — {c.get('slide_headline','')}", expanded=False):
+                        st.markdown(f"**Definition:** {c.get('definition','')}")
+                        st.markdown(f"**Who wins today:** {c.get('who_wins_today','')}")
                         st.markdown("**Winning offer**")
-                        for b in card_obj.get("winning_offer", []):
+                        for b in c.get("winning_offer", []):
                             st.write(f"• {b}")
                         st.markdown(f"**Gap for {my_brand}**")
-                        for b in card_obj.get(f"gap_for_{my_brand}", []):
+                        for b in c.get(f"gap_for_{my_brand}", []):
                             st.write(f"• {b}")
                         st.markdown(f"**Moves for {my_brand}**")
-                        for b in card_obj.get(f"moves_for_{my_brand}", []):
+                        for b in c.get(f"moves_for_{my_brand}", []):
                             st.write(f"• {b}")
 
             elif panel == "claims":
-                st.markdown("### Claims strategy")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown("**Category claims that win**")
-                    for b in cs.get("category_claims_that_win", []):
-                        st.write(f"• {b}")
-                with c2:
-                    st.markdown(f"**Opportunity claims for {my_brand}**")
-                    for b in cs.get(f"opportunity_claims_for_{my_brand}", []):
-                        st.write(f"• {b}")
+                st.markdown("### Claims strategy (feasibility-checked)")
+                st.markdown("#### Category claim patterns")
+                for i, p in enumerate(cs.get("category_claim_patterns", []), start=1):
+                    with st.expander(f"Pattern {i}: {p.get('pattern','')}", expanded=(i == 1)):
+                        st.markdown(f"**Evidence:**")
+                        for ev in p.get("evidence", []):
+                            st.write(f"• {ev}")
+                        st.markdown(f"**Inference:** {p.get('inference','')}")
+                        st.markdown(f"**Implication:** {p.get('implication','')}")
 
-                patterns = cs.get("competitor_claim_patterns", [])
-                if patterns:
-                    st.markdown("**Competitor patterns (with proof points)**")
-                    st.write(pd.DataFrame(patterns).to_html(index=False), unsafe_allow_html=True)
+                st.markdown("#### Opportunity claims (feasible vs blocked)")
+                opp = cs.get(f"opportunity_claims_for_{my_brand}", [])
+                if opp:
+                    opp_df = pd.DataFrame(opp)
+                    html_table(opp_df)
 
             elif panel == "ingredients":
                 st.markdown("### Ingredient audit")
-                ing_list = result.get("ingredient_audit", [])
-                if ing_list:
-                    ing_df = pd.DataFrame(ing_list)
+                for i, row in enumerate(ing, start=1):
+                    insight = row.get("insight") or {}
+                    with st.expander(f"{i}. {row.get('ingredient_type','Ingredient')}", expanded=(i == 1)):
+                        st.markdown(f"**Observation:** {insight.get('observation','')}")
+                        st.markdown("**Evidence:**")
+                        for ev in insight.get("evidence", []):
+                            st.write(f"• {ev}")
+                        st.markdown(f"**Inference:** {insight.get('inference','')}")
+                        st.markdown(f"**Implication:** {insight.get('implication','')}")
+                        st.markdown(f"**{my_brand} examples**")
+                        for ex in row.get(f"{my_brand}_examples", []):
+                            st.write(f"• {ex}")
+                        st.markdown("**Competitor examples**")
+                        for ce in row.get("competitor_examples", []):
+                            st.write(f"**{ce.get('entity','')}**")
+                            for ex in ce.get("examples", []):
+                                st.write(f"• {ex}")
 
-                    if my_brand in ing_df.columns:
-                        ing_df[my_brand] = ing_df[my_brand].apply(bullets_html)
+            elif panel == "mapping":
+                st.markdown("### Entity normalization audit")
+                st.markdown("<div class='small-muted'>Spot-check out-of-place parents before presenting entity counts.</div>", unsafe_allow_html=True)
+                audit_df = m_df[["brands", "parent_company"]].drop_duplicates().sort_values(["parent_company", "brands"])
+                html_table(audit_df, max_rows=250)
 
-                    def _comp_block(c):
-                        if not isinstance(c, dict):
-                            return ""
-                        name = c.get("entity", "")
-                        ex = c.get("examples", [])
-                        return f"<b>{name}</b><br>{bullets_html(ex)}"
-
-                    if "competitor_1" in ing_df.columns:
-                        ing_df["competitor_1"] = ing_df["competitor_1"].apply(_comp_block)
-                    if "competitor_2" in ing_df.columns:
-                        ing_df["competitor_2"] = ing_df["competitor_2"].apply(_comp_block)
-
-                    st.write(ing_df.to_html(index=False, escape=False), unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='small-muted'>No ingredient audit returned.</div>", unsafe_allow_html=True)
-
-            # Close details control
             c_close1, c_close2, _ = st.columns([1, 1, 3])
             with c_close1:
                 if st.button("Close details"):
                     st.session_state.active_panel = None
             with c_close2:
-                if st.button("Reset tiles"):
+                if st.button("Reset view"):
                     st.session_state.active_panel = None
 
-    else:
-        st.markdown("<div class='small-muted'>Generate a directive to populate tiles.</div>", unsafe_allow_html=True)
 else:
-    st.markdown("<div class='small-muted'>Run a market scan to begin.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small-muted'>Run a scan to begin.</div>", unsafe_allow_html=True)
