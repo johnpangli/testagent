@@ -70,8 +70,11 @@ h3 { font-size: 14px !important; margin: 0.65rem 0 0.25rem 0; letter-spacing: -0
 .small-muted { color: #64748b !important; font-size: 12px; line-height: 1.35; }
 .hr { height: 1px; background: #e5e7eb; margin: 12px 0; }
 
-/* Reduce vertical spacing between blocks */
+/* Reduce vertical spacing between blocks (global) */
 div[data-testid="stVerticalBlock"] { gap: 0.55rem; }
+
+/* Tiny spacing win (tighter) */
+div[data-testid="stVerticalBlock"] { gap: 0.35rem; }
 
 /* Buttons (clean) */
 .stButton>button {
@@ -108,19 +111,11 @@ button[kind="primary"]:hover {
   box-shadow: 0 1px 0 rgba(15,23,42,0.04);
 }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 2px;             /* tighter */
-}
-
 .card-title {
   font-size: 16px;                /* bigger */
   font-weight: 850;
   color: #0f172a;
-  margin: 0;                      /* no extra space */
+  margin: 0;
   letter-spacing: -0.02em;
 }
 
@@ -138,28 +133,6 @@ button[kind="primary"]:hover {
 
 .card-bullets div {
   margin: 3px 0;                  /* reduce bullet spacing */
-}
-.details-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #e5e7eb;
-  background: #f1f5f9;           /* light grey */
-  color: #0f172a;
-  font-size: 12px;
-  font-weight: 750;
-  white-space: nowrap;
-}
-
-
-/* Tile controls row */
-.tile-controls {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-  align-items: center;
 }
 
 /* Section label */
@@ -201,6 +174,24 @@ details summary {
   font-weight: 700 !important;
   font-size: 13px !important;
 }
+
+/* Right-side "View details" pill */
+.tile-action { display: flex; justify-content: flex-end; align-items: flex-start; padding-top: 4px; }
+.tile-action .stButton>button{
+  width: auto !important;
+  border-radius: 999px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #e5e7eb !important;
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  box-shadow: none !important;
+}
+.tile-action .stButton>button:hover{
+  background: #e8eef6 !important;
+  border-color: #cbd5e1 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -230,6 +221,32 @@ ss_init("directive_result", None)
 # =============================================================================
 # 3) MDM PARENT MAPPING (LOCKED TO GEMINI-3-FLASH-PREVIEW)
 # =============================================================================
+def _safe_response_text(resp) -> str:
+    """
+    Extract text from google.generativeai response reliably.
+    Some responses have candidates but no text Parts, so resp.text fails.
+    """
+    try:
+        t = (resp.text or "").strip()
+        if t:
+            return t
+    except Exception:
+        pass
+
+    try:
+        texts = []
+        for c in getattr(resp, "candidates", []) or []:
+            content = getattr(c, "content", None)
+            parts = getattr(content, "parts", None) if content else None
+            if parts:
+                for p in parts:
+                    pt = getattr(p, "text", None)
+                    if pt:
+                        texts.append(pt)
+        return "\n".join(texts).strip()
+    except Exception:
+        return ""
+
 def get_canonical_parent_map(messy_brands, api_key):
     if not messy_brands or not api_key:
         return {}
@@ -258,47 +275,29 @@ RETURN JSON ONLY:
   ]
 }}
 """
-    try:
-        response = model.generate_content(prompt)
-        clean_json = re.sub(r"```json\s?|```", "", response.text).strip()
-        data = json.loads(clean_json)
-        return {item["raw"]: item["canonical_parent"] for item in data.get("Mapping", [])}
-    except Exception as e:
-        st.error(f"MDM Engine Error: {e}")
-        return {b: b for b in messy_brands}
+    for attempt in range(1, 4):
+        try:
+            resp = model.generate_content(prompt)
+            txt = _safe_response_text(resp)
+            if not txt:
+                time.sleep(0.8 * attempt)
+                continue
+            clean_json = re.sub(r"```json\s?|```", "", txt).strip()
+            data = json.loads(clean_json)
+            out = {item["raw"]: item["canonical_parent"] for item in data.get("Mapping", []) if item.get("raw")}
+            if out:
+                return out
+            time.sleep(0.8 * attempt)
+        except Exception:
+            time.sleep(0.8 * attempt)
+            continue
 
+    st.error("MDM Engine Error: empty/invalid response from Gemini (no text parts). Falling back to raw brands.")
+    return {b: b for b in messy_brands}
 
 # =============================================================================
 # 3B) AI-LED ENTITY TYPING: branded vs private_label vs unknown (LOCKED TO 3-FLASH)
 # =============================================================================
-def _safe_response_text(resp) -> str:
-    """
-    Extract text from google.generativeai response reliably.
-    Some responses have candidates but no text Parts, so resp.text fails.
-    """
-    # Try quick accessor first
-    try:
-        t = (resp.text or "").strip()
-        if t:
-            return t
-    except Exception:
-        pass
-
-    # Fallback: walk candidates → content → parts
-    try:
-        texts = []
-        for c in getattr(resp, "candidates", []) or []:
-            content = getattr(c, "content", None)
-            parts = getattr(content, "parts", None) if content else None
-            if parts:
-                for p in parts:
-                    pt = getattr(p, "text", None)
-                    if pt:
-                        texts.append(pt)
-        return "\n".join(texts).strip()
-    except Exception:
-        return ""
-
 def classify_entity_types(parent_companies, sample_products_by_parent, api_key):
     """
     AI classifier: parent_company -> entity_type (branded/private_label/unknown)
@@ -345,16 +344,13 @@ RETURN JSON ONLY:
 }}
 """
 
-    # Retry because Gemini sometimes returns a candidate with no text parts
     for attempt in range(1, 4):
         try:
             resp = model.generate_content(prompt)
             txt = _safe_response_text(resp)
-
             if not txt:
                 time.sleep(0.8 * attempt)
                 continue
-
             txt = re.sub(r"```json\s?|```", "", txt).strip()
             data = json.loads(txt)
 
@@ -365,21 +361,15 @@ RETURN JSON ONLY:
                 if pc:
                     out[pc] = et
 
-            # If JSON parsed but empty, treat as retry-worthy
-            if not out:
-                time.sleep(0.8 * attempt)
-                continue
+            if out:
+                return out
 
-            return out
-
+            time.sleep(0.8 * attempt)
         except Exception:
             time.sleep(0.8 * attempt)
             continue
 
-    # Hard fallback: keep app usable
     return {p: "unknown" for p in parent_companies}
-
-
 
 # =============================================================================
 # 4) DATA ACQUISITION
@@ -439,15 +429,12 @@ def fetch_market_intelligence(category, gemini_key):
     df = df.drop_duplicates(subset=["product_name"])
     df["unique_scans_n"] = pd.to_numeric(df.get("unique_scans_n"), errors="coerce").fillna(0)
 
-    # --- MDM PARENT MAP ---
     unique_messy = df["brands"].unique().tolist()
     with st.spinner(f"Normalizing corporate parents ({len(unique_messy)} brands)…"):
         parent_map = get_canonical_parent_map(unique_messy, gemini_key)
 
     df["parent_company"] = df["brands"].map(parent_map).fillna(df["brands"])
 
-    # --- AI ENTITY TYPING (branded vs private_label) ---
-    # build sample SKUs per parent as evidence
     parents = df["parent_company"].dropna().unique().tolist()
     sample_by_parent = {}
     for p in parents:
@@ -462,15 +449,9 @@ def fetch_market_intelligence(category, gemini_key):
         type_map = classify_entity_types(parents, sample_by_parent, gemini_key)
 
     df["entity_type"] = df["parent_company"].map(type_map).fillna("unknown")
-
     return df
 
-
 def fetch_demographics(census_key, region):
-    """
-    ACS 5-year, ZIP-level via state_zipcode for selected region states.
-    Adds richer variables + computed fields.
-    """
     if not census_key:
         return None
 
@@ -478,13 +459,11 @@ def fetch_demographics(census_key, region):
     states = REGION_MAP.get(region, ["MI"])
     all_data = []
 
-    # Richer ACS fields (requested: family vs single/nonfamily, median age, etc.)
     vars = (
         "B01003_001E",  # population
         "B19013_001E",  # median household income
         "B17001_002E",  # poverty numerator
         "B17001_001E",  # poverty denominator
-
         "B01002_001E",  # median age
         "B11001_001E",  # total households
         "B11001_002E",  # family households
@@ -505,7 +484,6 @@ def fetch_demographics(census_key, region):
     if df.empty:
         return None
 
-    # numeric
     df["population"] = pd.to_numeric(df["B01003_001E"], errors="coerce")
     df["income"] = pd.to_numeric(df["B19013_001E"], errors="coerce")
 
@@ -524,10 +502,8 @@ def fetch_demographics(census_key, region):
     under18 = pd.to_numeric(df["B09001_001E"], errors="coerce")
     df["under18_share_pct"] = (under18 / df["population"].replace(0, 1)) * 100
 
-    # filter usable
     df = df[(df["income"] > 0) & (df["population"] > 0)]
     return df
-
 
 def process_trends(files):
     if not files:
@@ -540,7 +516,6 @@ def process_trends(files):
         except:
             pass
     return text[:15000]
-
 
 # =============================================================================
 # 5) HELPERS
@@ -585,12 +560,6 @@ def summarize_entity_signals(evidence_items):
     return "\n".join(lines)
 
 def choose_peers(m_df, focus_parent, branded_n=4, pl_n=2):
-    """
-    Uses AI-generated m_df['entity_type'] to pick peers:
-    - top branded_n branded peers
-    - top pl_n private_label peers
-    - backfill if short
-    """
     peers_df = m_df[m_df["parent_company"] != focus_parent].copy()
     peers_df["w"] = peers_df["unique_scans_n"].fillna(0)
 
@@ -623,24 +592,20 @@ def _truncate(s, n=140):
     s = str(s).strip()
     return s if len(s) <= n else (s[: n - 1].rstrip() + "…")
 
-def tile_card(title, subtitle, bullets, right_html=""):
+def tile_card(title, subtitle, bullets):
     bullets = [b for b in (bullets or []) if str(b).strip()][:3]
     bullets_html = "".join([f"<div>• {_truncate(b, 150)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
 
     st.markdown(f"""
     <div class="card">
-      <div class="card-header">
-        <div class="card-title">{title}</div>
-        {right_html}
-      </div>
+      <div class="card-title">{title}</div>
       <div class="card-sub">{subtitle}</div>
       <div class="card-bullets">{bullets_html}</div>
     </div>
     """, unsafe_allow_html=True)
 
-
 # =============================================================================
-# 6) DETAILS RENDERER (used by modal or fallback drawer)
+# 6) DETAILS RENDERER
 # =============================================================================
 def render_details(panel_key, result, my_brand, m_df, d_df):
     if not result:
@@ -747,13 +712,11 @@ def render_details(panel_key, result, my_brand, m_df, d_df):
         st.markdown("#### Strategic questions")
         for q in questions:
             st.write(f"• {q}")
-
     else:
         st.write("Unknown panel.")
 
-
 # =============================================================================
-# 7) MODAL OPEN (st.dialog) with fallback to right sidebar drawer
+# 7) MODAL OPEN
 # =============================================================================
 def open_details(panel_key, result, my_brand, m_df, d_df):
     if hasattr(st, "dialog"):
@@ -762,12 +725,10 @@ def open_details(panel_key, result, my_brand, m_df, d_df):
             render_details(panel_key, result, my_brand, m_df, d_df)
         _dlg()
     else:
-        # Fallback: right sidebar drawer
         with st.sidebar:
             st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
             st.markdown("## Details")
             render_details(panel_key, result, my_brand, m_df, d_df)
-
 
 # =============================================================================
 # 8) SIDEBAR
@@ -786,19 +747,23 @@ with st.sidebar:
         GEMINI_API = st.text_input("Gemini API Key", type="password")
         CENSUS_API = st.text_input("Census API Key", type="password")
 
-        st.session_state.sel_category = st.selectbox("Category", list(CATEGORY_MAP.keys()),
-                                                     index=list(CATEGORY_MAP.keys()).index(st.session_state.sel_category)
-                                                     if st.session_state.sel_category in CATEGORY_MAP else 0)
-        st.session_state.sel_region = st.selectbox("Region", list(REGION_MAP.keys()),
-                                                   index=list(REGION_MAP.keys()).index(st.session_state.sel_region)
-                                                   if st.session_state.sel_region in REGION_MAP else 0)
+        st.session_state.sel_category = st.selectbox(
+            "Category",
+            list(CATEGORY_MAP.keys()),
+            index=list(CATEGORY_MAP.keys()).index(st.session_state.sel_category)
+            if st.session_state.sel_category in CATEGORY_MAP else 0
+        )
+        st.session_state.sel_region = st.selectbox(
+            "Region",
+            list(REGION_MAP.keys()),
+            index=list(REGION_MAP.keys()).index(st.session_state.sel_region)
+            if st.session_state.sel_region in REGION_MAP else 0
+        )
 
         uploaded_files = st.file_uploader("Trend PDFs (optional)", type=["pdf"], accept_multiple_files=True)
-
         execute = st.button("Run scan", type="primary")
 
         st.markdown("<div class='small-muted'>Cleaning: gemini-3-flash-preview • Analysis: gemini-2.5-pro</div>", unsafe_allow_html=True)
-
     else:
         st.markdown("### Selections")
         st.write(f"Category: **{st.session_state.sel_category}**")
@@ -817,7 +782,6 @@ with st.sidebar:
         if st.button("Edit selections"):
             st.session_state.ui_locked = False
             st.session_state.directive_result = None
-
 
 # =============================================================================
 # 9) MAIN
@@ -867,14 +831,12 @@ k1.metric("SKUs", len(m_df))
 k2.metric("Entities", len(parent_list))
 k3.metric("Avg income", f"${d_df['income'].mean():,.0f}")
 k4.metric("Poverty", f"{d_df['poverty_rate'].mean():.1f}%")
-
 k5.metric("Median age", f"{d_df['median_age'].mean():.1f}")
 k6.metric("Family HH", f"{d_df['family_household_pct'].mean():.1f}%")
 
-
 st.markdown("<div class='section-label'>Market snapshot</div>", unsafe_allow_html=True)
 
-# Focus selection (only when unlocked)
+# Focus selection
 if not st.session_state.ui_locked:
     c1, c2 = st.columns([2, 1])
     with c1:
@@ -887,7 +849,6 @@ if not st.session_state.ui_locked:
         st.session_state.sel_focus = my_brand
     with c2:
         st.markdown("<div class='small-muted' style='padding-top: 1.65rem;'>Pick the focal entity, then generate the readout.</div>", unsafe_allow_html=True)
-
 else:
     my_brand = st.session_state.sel_focus or (parent_list[0] if parent_list else None)
 
@@ -900,15 +861,12 @@ with c_gen2:
 
 # Generate directive
 if generate:
-    # Choose peers using AI entity_type tagging
     branded_peers, private_label_peers, all_peers = choose_peers(m_df, my_brand, branded_n=4, pl_n=2)
     st.session_state.sel_branded_peers = branded_peers
     st.session_state.sel_private_label_peers = private_label_peers
     st.session_state.sel_all_peers = all_peers
-
     st.session_state.ui_locked = True
 
-    # Build LLM context
     genai.configure(api_key=GEMINI_API)
     model = genai.GenerativeModel("gemini-2.5-pro")
 
@@ -917,7 +875,6 @@ if generate:
         [f"{c}:\n{summarize_entity_signals(build_entity_evidence(m_df, c, n=8))}" for c in all_peers]
     )
 
-    # Demographic summary (richer)
     demo_summary = {
         "avg_income": float(d_df["income"].mean()),
         "poverty": float(d_df["poverty_rate"].mean()),
@@ -1078,7 +1035,6 @@ bpl = ms.get("branded_vs_private_label", [])
 occ = result.get("occasion_cards", [])
 cs = result.get("claims_strategy", {})
 ing = result.get("ingredient_audit", [])
-questions = result.get("strategic_questions", [])
 
 def _tile_from_insights(insights, take=3):
     out = []
@@ -1110,34 +1066,20 @@ tile_mdm = ["Spot-check surprising parents before presenting counts.", "Confirm 
 st.markdown("<div class='section-label'>One-page readout</div>", unsafe_allow_html=True)
 
 def tile_row(panel_key, title, subtitle, bullets):
-    # right-side button placeholder (visual only; real button below)
-    tile_card(
-        title,
-        subtitle,
-        bullets,
-        right_html=f"<span class='details-btn'>View details</span>"
-    )
+    left, right = st.columns([12, 2])
 
-    # Invisible-ish Streamlit button that triggers the modal
-    # Put it right under, but keep it compact and not a second “row”
-    c1, c2 = st.columns([1, 9])
-    with c1:
+    with left:
+        tile_card(title, subtitle, bullets)
+
+    with right:
+        st.markdown("<div class='tile-action'>", unsafe_allow_html=True)
         if st.button("View details", key=f"{panel_key}_view"):
             open_details(panel_key, result, my_brand, m_df, d_df)
-    with c2:
-        st.write("")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-
-# Vertical stack (6 cards)
 tile_row("exec", "Executive summary", "", tile_exec)
 tile_row("market", "Market structure", "Branded vs private label dynamics", tile_market)
 tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
 tile_row("ingredients", "Ingredient audit", "Drivers of perceived quality / cost", tile_ing)
 tile_row("mdm", "Entity normalization", "Validate mappings before presenting", tile_mdm)
-
-# Optional: questions tile (if you want a 7th)
-# tile_row("questions", "Strategic questions", "Hard questions to pressure-test moves", questions[:3])
-
-
-
