@@ -155,20 +155,29 @@ button[kind="primary"]:hover {
 .card-bullets div { margin: 4px 0; }
 
 /* --- THE CLEAN DARK GREY PILL (scoped) --- */
+.tile-action div[data-testid="stButton"]{
+  width: 100% !important;
+  display: flex !important;
+  justify-content: flex-end !important;  /* push pill to the right */
+}
+
 .tile-action .stButton>button{
-  width: auto !important;
-  border-radius: 999px !important;
-  padding: 6px 10px !important;
-  border: 1px solid #d7dde6 !important;
-  background: #e9edf3 !important;   /* darker than last */
+  width: auto !important;               /* override global 100% */
+  min-width: 0 !important;
+  border-radius: 9999px !important;     /* true pill */
+  padding: 6px 12px !important;
+  border: 1px solid #9aa4b2 !important; /* darker border */
+  background: #b1bdcf !important;       /* darker grey fill */
   color: #0f172a !important;
   font-size: 12px !important;
-  font-weight: 750 !important;
+  font-weight: 800 !important;
   box-shadow: none !important;
+  line-height: 1 !important;
 }
+
 .tile-action .stButton>button:hover{
-  background: #dde3ec !important;
-  border-color: #cbd5e1 !important;
+  background: #b8c4d6 !important;       /* darker hover */
+  border-color: #7f8a99 !important;
 }
 
 /* Tables */
@@ -1006,3 +1015,4 @@ tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
 tile_row("ingredients", "Ingredient audit", "Drivers of perceived quality / cost", tile_ing)
 tile_row("mdm", "Entity normalization", "Validate mappings before presenting", tile_mdm)
+
