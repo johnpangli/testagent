@@ -104,26 +104,55 @@ button[kind="primary"]:hover {
   background: #ffffff;
   border: 1px solid #e6e8ef;
   border-radius: 16px;
-  padding: 14px 14px 12px 14px;
+  padding: 12px 14px 10px 14px;   /* tighter */
   box-shadow: 0 1px 0 rgba(15,23,42,0.04);
 }
-.card-title {
-  font-size: 13.5px;
-  font-weight: 780;
-  color: #0f172a;
-  margin-bottom: 2px;
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;             /* tighter */
 }
+
+.card-title {
+  font-size: 16px;                /* bigger */
+  font-weight: 850;
+  color: #0f172a;
+  margin: 0;                      /* no extra space */
+  letter-spacing: -0.02em;
+}
+
 .card-sub {
   font-size: 12px;
   color: #64748b;
-  margin-bottom: 10px;
+  margin: 0 0 6px 0;              /* tighter */
 }
+
 .card-bullets {
   font-size: 13px;
   color: #0f172a;
-  line-height: 1.35;
+  line-height: 1.25;              /* tighter */
 }
-.card-bullets div { margin: 6px 0; }
+
+.card-bullets div {
+  margin: 3px 0;                  /* reduce bullet spacing */
+}
+.details-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f1f5f9;           /* light grey */
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
 
 /* Tile controls row */
 .tile-controls {
@@ -594,16 +623,21 @@ def _truncate(s, n=140):
     s = str(s).strip()
     return s if len(s) <= n else (s[: n - 1].rstrip() + "…")
 
-def tile_card(title, subtitle, bullets):
+def tile_card(title, subtitle, bullets, right_html=""):
     bullets = [b for b in (bullets or []) if str(b).strip()][:3]
-    bullets_html = "".join([f"<div>• {_truncate(b, 160)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
+    bullets_html = "".join([f"<div>• {_truncate(b, 150)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
+
     st.markdown(f"""
     <div class="card">
-      <div class="card-title">{title}</div>
+      <div class="card-header">
+        <div class="card-title">{title}</div>
+        {right_html}
+      </div>
       <div class="card-sub">{subtitle}</div>
       <div class="card-bullets">{bullets_html}</div>
     </div>
     """, unsafe_allow_html=True)
+
 
 # =============================================================================
 # 6) DETAILS RENDERER (used by modal or fallback drawer)
@@ -1076,21 +1110,26 @@ tile_mdm = ["Spot-check surprising parents before presenting counts.", "Confirm 
 st.markdown("<div class='section-label'>One-page readout</div>", unsafe_allow_html=True)
 
 def tile_row(panel_key, title, subtitle, bullets):
-    tile_card(title, subtitle, bullets)
-    # controls right under the card: View details + Hide (Hide just closes modal/drawer when using fallback)
-    c1, c2, c3 = st.columns([1, 1, 6])
+    # right-side button placeholder (visual only; real button below)
+    tile_card(
+        title,
+        subtitle,
+        bullets,
+        right_html=f"<span class='details-btn'>View details</span>"
+    )
+
+    # Invisible-ish Streamlit button that triggers the modal
+    # Put it right under, but keep it compact and not a second “row”
+    c1, c2 = st.columns([1, 9])
     with c1:
         if st.button("View details", key=f"{panel_key}_view"):
             open_details(panel_key, result, my_brand, m_df, d_df)
     with c2:
-        # In modal mode, closing is done in the X; in fallback, this removes drawer content by rerun
-        if st.button("Hide", key=f"{panel_key}_hide"):
-            pass
-    with c3:
-        st.write("")  # spacer
+        st.write("")
+
 
 # Vertical stack (6 cards)
-tile_row("exec", "Executive summary", "Second-order insights (so what)", tile_exec)
+tile_row("exec", "Executive summary", "", tile_exec)
 tile_row("market", "Market structure", "Branded vs private label dynamics", tile_market)
 tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
@@ -1099,5 +1138,6 @@ tile_row("mdm", "Entity normalization", "Validate mappings before presenting", t
 
 # Optional: questions tile (if you want a 7th)
 # tile_row("questions", "Strategic questions", "Hard questions to pressure-test moves", questions[:3])
+
 
 
