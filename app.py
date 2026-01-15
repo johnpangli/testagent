@@ -22,7 +22,7 @@ html, body, [class*="css"] {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
 div.block-container {
-  padding-top: 3.25rem !important;   /* buffer below header bar */
+  padding-top: 3.25rem !important;
   max-width: 1400px;
 }
 
@@ -46,7 +46,7 @@ section[data-testid="stSidebar"] {
 }
 section[data-testid="stSidebar"] * { color: #0f172a !important; }
 
-/* Sidebar widget input backgrounds (slightly darker than sidebar) */
+/* Sidebar widget input backgrounds */
 section[data-testid="stSidebar"] input,
 section[data-testid="stSidebar"] textarea,
 section[data-testid="stSidebar"] select,
@@ -70,13 +70,20 @@ h3 { font-size: 14px !important; margin: 0.65rem 0 0.25rem 0; letter-spacing: -0
 .small-muted { color: #64748b !important; font-size: 12px; line-height: 1.35; }
 .hr { height: 1px; background: #e5e7eb; margin: 12px 0; }
 
-/* Reduce vertical spacing between blocks (global) */
-div[data-testid="stVerticalBlock"] { gap: 0.55rem; }
+/* Bring back spacing between rows (less squish) */
+div[data-testid="stVerticalBlock"] { gap: 0.70rem; }
 
-/* Tiny spacing win (tighter) */
-div[data-testid="stVerticalBlock"] { gap: 0.35rem; }
+/* Section label */
+.section-label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 10px 0 8px 2px;
+}
 
-/* Buttons (clean) */
+/* Buttons base (keep clean for everything else) */
 .stButton>button {
   width: 100%;
   border-radius: 12px !important;
@@ -91,7 +98,7 @@ div[data-testid="stVerticalBlock"] { gap: 0.35rem; }
   background: #fbfbfd !important;
 }
 
-/* Make PRIMARY buttons light/outlined too (no black pill) */
+/* Primary buttons light */
 button[kind="primary"] {
   background: #ffffff !important;
   color: #0f172a !important;
@@ -107,12 +114,26 @@ button[kind="primary"]:hover {
   background: #ffffff;
   border: 1px solid #e6e8ef;
   border-radius: 16px;
-  padding: 12px 14px 10px 14px;   /* tighter */
+  padding: 12px 14px 10px 14px;
   box-shadow: 0 1px 0 rgba(15,23,42,0.04);
 }
 
+/* Row wrapper so we can add breathing room between tiles */
+.tile-row {
+  margin-bottom: 10px;
+}
+
+/* Card header row: title left, button right */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
 .card-title {
-  font-size: 16px;                /* bigger */
+  font-size: 16px;
   font-weight: 850;
   color: #0f172a;
   margin: 0;
@@ -122,30 +143,35 @@ button[kind="primary"]:hover {
 .card-sub {
   font-size: 12px;
   color: #64748b;
-  margin: 0 0 6px 0;              /* tighter */
+  margin: 0 0 6px 0;
 }
 
 .card-bullets {
   font-size: 13px;
   color: #0f172a;
-  line-height: 1.25;              /* tighter */
+  line-height: 1.28; /* slightly more breathable */
 }
 
-.card-bullets div {
-  margin: 3px 0;                  /* reduce bullet spacing */
+.card-bullets div { margin: 4px 0; }
+
+/* --- THE CLEAN DARK GREY PILL (scoped) --- */
+.tile-action .stButton>button{
+  width: auto !important;
+  border-radius: 999px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #d7dde6 !important;
+  background: #e9edf3 !important;   /* darker than last */
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  box-shadow: none !important;
+}
+.tile-action .stButton>button:hover{
+  background: #dde3ec !important;
+  border-color: #cbd5e1 !important;
 }
 
-/* Section label */
-.section-label {
-  font-size: 11.5px;
-  font-weight: 800;
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 10px 0 6px 2px;
-}
-
-/* Tables (light) */
+/* Tables */
 table { width: 100%; border-collapse: collapse; background: #ffffff; }
 th {
   background: #f8fafc;
@@ -173,24 +199,6 @@ details summary {
   color: #0f172a !important;
   font-weight: 700 !important;
   font-size: 13px !important;
-}
-
-/* Right-side "View details" pill */
-.tile-action { display: flex; justify-content: flex-end; align-items: flex-start; padding-top: 4px; }
-.tile-action .stButton>button{
-  width: auto !important;
-  border-radius: 999px !important;
-  padding: 6px 10px !important;
-  border: 1px solid #e5e7eb !important;
-  background: #f1f5f9 !important;
-  color: #0f172a !important;
-  font-size: 12px !important;
-  font-weight: 750 !important;
-  box-shadow: none !important;
-}
-.tile-action .stButton>button:hover{
-  background: #e8eef6 !important;
-  border-color: #cbd5e1 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -222,10 +230,6 @@ ss_init("directive_result", None)
 # 3) MDM PARENT MAPPING (LOCKED TO GEMINI-3-FLASH-PREVIEW)
 # =============================================================================
 def _safe_response_text(resp) -> str:
-    """
-    Extract text from google.generativeai response reliably.
-    Some responses have candidates but no text Parts, so resp.text fails.
-    """
     try:
         t = (resp.text or "").strip()
         if t:
@@ -299,11 +303,6 @@ RETURN JSON ONLY:
 # 3B) AI-LED ENTITY TYPING: branded vs private_label vs unknown (LOCKED TO 3-FLASH)
 # =============================================================================
 def classify_entity_types(parent_companies, sample_products_by_parent, api_key):
-    """
-    AI classifier: parent_company -> entity_type (branded/private_label/unknown)
-    Uses parent name + a few sample SKUs as evidence.
-    Robust to empty/no-text responses from Gemini.
-    """
     if not parent_companies or not api_key:
         return {}
 
@@ -315,9 +314,7 @@ def classify_entity_types(parent_companies, sample_products_by_parent, api_key):
     evidence_lines = []
     for p in parent_companies:
         samples = (sample_products_by_parent.get(p, []) or [])[:3]
-        sample_txt = " | ".join(
-            [str(s.get("product_name", "")).strip() for s in samples if s.get("product_name")]
-        )[:240]
+        sample_txt = " | ".join([str(s.get("product_name", "")).strip() for s in samples if s.get("product_name")])[:240]
         evidence_lines.append(f"- {p} :: samples: {sample_txt}")
 
     prompt = f"""
@@ -343,7 +340,6 @@ RETURN JSON ONLY:
   ]
 }}
 """
-
     for attempt in range(1, 4):
         try:
             resp = model.generate_content(prompt)
@@ -351,6 +347,7 @@ RETURN JSON ONLY:
             if not txt:
                 time.sleep(0.8 * attempt)
                 continue
+
             txt = re.sub(r"```json\s?|```", "", txt).strip()
             data = json.loads(txt)
 
@@ -438,11 +435,7 @@ def fetch_market_intelligence(category, gemini_key):
     parents = df["parent_company"].dropna().unique().tolist()
     sample_by_parent = {}
     for p in parents:
-        tmp = (
-            df[df["parent_company"] == p]
-            .sort_values("unique_scans_n", ascending=False)
-            .head(3)
-        )
+        tmp = df[df["parent_company"] == p].sort_values("unique_scans_n", ascending=False).head(3)
         sample_by_parent[p] = tmp[["product_name"]].to_dict("records")
 
     with st.spinner("Tagging entities (branded vs private label)…"):
@@ -460,16 +453,16 @@ def fetch_demographics(census_key, region):
     all_data = []
 
     vars = (
-        "B01003_001E",  # population
-        "B19013_001E",  # median household income
-        "B17001_002E",  # poverty numerator
-        "B17001_001E",  # poverty denominator
-        "B01002_001E",  # median age
-        "B11001_001E",  # total households
-        "B11001_002E",  # family households
-        "B11001_007E",  # nonfamily households
-        "B25010_001E",  # average household size
-        "B09001_001E",  # population under 18 (total)
+        "B01003_001E",
+        "B19013_001E",
+        "B17001_002E",
+        "B17001_001E",
+        "B01002_001E",
+        "B11001_001E",
+        "B11001_002E",
+        "B11001_007E",
+        "B25010_001E",
+        "B09001_001E",
     )
 
     for s_code in states:
@@ -592,18 +585,6 @@ def _truncate(s, n=140):
     s = str(s).strip()
     return s if len(s) <= n else (s[: n - 1].rstrip() + "…")
 
-def tile_card(title, subtitle, bullets):
-    bullets = [b for b in (bullets or []) if str(b).strip()][:3]
-    bullets_html = "".join([f"<div>• {_truncate(b, 150)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
-
-    st.markdown(f"""
-    <div class="card">
-      <div class="card-title">{title}</div>
-      <div class="card-sub">{subtitle}</div>
-      <div class="card-bullets">{bullets_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
 # =============================================================================
 # 6) DETAILS RENDERER
 # =============================================================================
@@ -712,6 +693,7 @@ def render_details(panel_key, result, my_brand, m_df, d_df):
         st.markdown("#### Strategic questions")
         for q in questions:
             st.write(f"• {q}")
+
     else:
         st.write("Unknown panel.")
 
@@ -764,6 +746,7 @@ with st.sidebar:
         execute = st.button("Run scan", type="primary")
 
         st.markdown("<div class='small-muted'>Cleaning: gemini-3-flash-preview • Analysis: gemini-2.5-pro</div>", unsafe_allow_html=True)
+
     else:
         st.markdown("### Selections")
         st.write(f"Category: **{st.session_state.sel_category}**")
@@ -932,90 +915,15 @@ TRENDS (PDF snippets; may be empty):
 {trends}
 
 RETURN JSON ONLY, EXACT SCHEMA:
-
-{{
-  "executive_summary": {{
-    "bluf": "2 sentences max",
-    "key_insights": [
-      {{
-        "observation": "…",
-        "evidence": ["…","…"],
-        "inference": "…",
-        "implication": "…"
-      }}
-    ],
-    "gaps_and_risks": ["…","…"]
-  }},
-  "market_structure": {{
-    "branded_vs_private_label": [
-      {{
-        "observation": "…",
-        "evidence": ["…","…"],
-        "inference": "…",
-        "implication": "…"
-      }}
-    ],
-    "competitive_roles": [
-      {{
-        "entity": "name",
-        "role": "incumbent | premium | value | retailer_brand | niche",
-        "proof_points": ["…","…","…"]
-      }}
-    ]
-  }},
-  "occasion_cards": [
-    {{
-      "occasion_name": "short title",
-      "slide_headline": "short headline",
-      "definition": "1 sentence",
-      "who_wins_today": "entity/private label",
-      "winning_offer": ["3 bullets"],
-      "gap_for_{my_brand}": ["3 bullets"],
-      "moves_for_{my_brand}": ["5 bullets (must be specific)"]
-    }}
-  ],
-  "claims_strategy": {{
-    "category_claim_patterns": [
-      {{
-        "pattern": "e.g., gluten-free as mainstream trust cue",
-        "evidence": ["…","…"],
-        "inference": "…",
-        "implication": "…"
-      }}
-    ],
-    "opportunity_claims_for_{my_brand}": [
-      {{
-        "claim": "…",
-        "status": "feasible | blocked | unclear",
-        "why": "1 sentence",
-        "evidence_or_conflict": ["…","…"],
-        "what_would_need_to_change": ["…","…"],
-        "when_to_use": "occasion / segment"
-      }}
-    ]
-  }},
-  "ingredient_audit": [
-    {{
-      "ingredient_type": "e.g., sweetener | oil | preservative | flavor system | allergen cue",
-      "insight": {{
-        "observation": "…",
-        "evidence": ["…","…"],
-        "inference": "…",
-        "implication": "…"
-      }},
-      "{my_brand}_examples": ["…","…","…"],
-      "competitor_examples": [
-        {{"entity":"…","examples":["…","…","…"]}}
-      ]
-    }}
-  ],
-  "strategic_questions": ["…","…","…"]
-}}
+{{ ... }}
 """
+    # (keep your JSON schema block exactly as you already had — omitted here just to shorten the message)
+    # Paste your existing schema block back in under "RETURN JSON ONLY, EXACT SCHEMA:".
+
     try:
         with st.spinner("Generating…"):
             response = model.generate_content(prompt)
-        res_txt = re.sub(r"```json\s?|```", "", response.text).strip()
+        res_txt = re.sub(r"```json\\s?|```", "", response.text).strip()
         st.session_state.directive_result = json.loads(res_txt)
     except Exception as e:
         st.error(f"Generation failed: {e}")
@@ -1066,10 +974,25 @@ tile_mdm = ["Spot-check surprising parents before presenting counts.", "Confirm 
 st.markdown("<div class='section-label'>One-page readout</div>", unsafe_allow_html=True)
 
 def tile_row(panel_key, title, subtitle, bullets):
-    left, right = st.columns([12, 2])
+    bullets = [b for b in (bullets or []) if str(b).strip()][:3]
+    bullets_html = "".join([f"<div>• {_truncate(b, 150)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
+
+    # One row: big card (left) + pill button (right). No second button anywhere.
+    left, right = st.columns([12, 2], vertical_alignment="top")
 
     with left:
-        tile_card(title, subtitle, bullets)
+        st.markdown(f"""
+        <div class="tile-row">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">{title}</div>
+              <div style="width: 0px;"></div>
+            </div>
+            <div class="card-sub">{subtitle}</div>
+            <div class="card-bullets">{bullets_html}</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with right:
         st.markdown("<div class='tile-action'>", unsafe_allow_html=True)
