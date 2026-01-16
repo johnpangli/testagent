@@ -483,8 +483,14 @@ def fetch_market_intelligence(category, gemini_key):
     status_text = st.empty()
 
     last_http = None
+
+    # --- retry settings ---
+    MAX_PAGE_RETRIES = 2          # total attempts per page
+    RETRY_SLEEP_SECONDS = 60      # wait 1 minute before retry
+
     for page in range(1, 6):
         status_text.text(f"Scanning products · page {page}")
+
         url = (
             "https://world.openfoodfacts.org/cgi/search.pl?"
             "action=process"
@@ -494,30 +500,74 @@ def fetch_market_intelligence(category, gemini_key):
             f"&page={page}"
             "&fields=product_name,brands,countries_tags,ingredients_text,labels_tags,unique_scans_n"
         )
-        try:
-            r = requests.get(url, headers=headers, timeout=15)
-            last_http = r.status_code
-            if r.status_code != 200:
-                st.warning(f"OpenFoodFacts returned HTTP {r.status_code} on page {page}.")
-                st.code((r.text or "")[:600])
-                break
+
+        page_products = None
+        page_error = None
+
+        for attempt in range(1, MAX_PAGE_RETRIES + 1):
             try:
-                payload = r.json()
-            except Exception:
-                st.warning(f"OpenFoodFacts returned non-JSON on page {page}.")
-                st.code((r.text or "")[:600])
+                r = requests.get(url, headers=headers, timeout=15)
+                last_http = r.status_code
+
+                if r.status_code != 200:
+                    page_error = f"HTTP {r.status_code}"
+                    # Retry if not last attempt
+                    if attempt < MAX_PAGE_RETRIES:
+                        st.warning(f"OpenFoodFacts {page_error} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                        time.sleep(RETRY_SLEEP_SECONDS)
+                        continue
+                    else:
+                        st.warning(f"OpenFoodFacts {page_error} on page {page}. Skipping page.")
+                        st.code((r.text or "")[:600])
+                        break
+
+                try:
+                    payload = r.json()
+                except Exception:
+                    page_error = "non-JSON response"
+                    if attempt < MAX_PAGE_RETRIES:
+                        st.warning(f"OpenFoodFacts returned {page_error} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                        time.sleep(RETRY_SLEEP_SECONDS)
+                        continue
+                    else:
+                        st.warning(f"OpenFoodFacts returned {page_error} on page {page}. Skipping page.")
+                        st.code((r.text or "")[:600])
+                        break
+
+                products = payload.get("products", [])
+
+                # Treat "no products" as a soft failure on first try, then skip if repeats.
+                if not products:
+                    page_error = "empty products list"
+                    if attempt < MAX_PAGE_RETRIES:
+                        st.warning(f"OpenFoodFacts returned no products on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                        time.sleep(RETRY_SLEEP_SECONDS)
+                        continue
+                    else:
+                        st.warning(f"OpenFoodFacts returned no products on page {page} after retries. Skipping page.")
+                        break
+
+                # Success
+                page_products = products
                 break
 
-            products = payload.get("products", [])
-            if not products:
-                break
-            all_products.extend(products)
-            time.sleep(0.45)
-        except Exception as e:
-            st.warning(f"OpenFoodFacts request failed on page {page}: {e}")
-            break
+            except Exception as e:
+                page_error = str(e)
+                if attempt < MAX_PAGE_RETRIES:
+                    st.warning(f"OpenFoodFacts request failed on page {page} (attempt {attempt}/{MAX_PAGE_RETRIES}): {e}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                    time.sleep(RETRY_SLEEP_SECONDS)
+                    continue
+                else:
+                    st.warning(f"OpenFoodFacts request failed on page {page} after retries: {e}. Skipping page.")
+                    break
+
+        # If we got products, extend; if not, keep going to next page.
+        if page_products:
+            all_products.extend(page_products)
+            time.sleep(0.45)  # keep your polite pacing
 
     status_text.empty()
+
     df = pd.DataFrame(all_products)
     if df.empty:
         st.warning(f"No products returned from OpenFoodFacts for tag '{tech_tag}'. Last HTTP: {last_http}")
@@ -1269,4 +1319,5 @@ tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
 tile_row("ingredients", "Ingredient audit", "Drivers of perceived quality / cost", tile_ing)
 tile_row("mdm", "Entity normalization", "Validate mappings before presenting", tile_mdm)
+
 
