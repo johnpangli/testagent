@@ -1083,7 +1083,84 @@ TRENDS (PDF snippets; may be empty):
 {trends}
 
 RETURN JSON ONLY, EXACT SCHEMA:
-{{ ... }}
+{{
+  "executive_summary": {{
+    "bluf": "2 sentences max",
+    "key_insights": [
+      {{
+        "observation": "…",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
+      }}
+    ],
+    "gaps_and_risks": ["…","…"]
+  }},
+  "market_structure": {{
+    "branded_vs_private_label": [
+      {{
+        "observation": "…",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
+      }}
+    ],
+    "competitive_roles": [
+      {{
+        "entity": "name",
+        "role": "incumbent | premium | value | retailer_brand | niche",
+        "proof_points": ["…","…","…"]
+      }}
+    ]
+  }},
+  "occasion_cards": [
+    {{
+      "occasion_name": "short title",
+      "slide_headline": "short headline",
+      "definition": "1 sentence",
+      "who_wins_today": "entity/private label",
+      "winning_offer": ["3 bullets"],
+      "gap_for_{my_brand}": ["3 bullets"],
+      "moves_for_{my_brand}": ["5 bullets (must be specific)"]
+    }}
+  ],
+  "claims_strategy": {{
+    "category_claim_patterns": [
+      {{
+        "pattern": "e.g., gluten-free as mainstream trust cue",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
+      }}
+    ],
+    "opportunity_claims_for_{my_brand}": [
+      {{
+        "claim": "…",
+        "status": "feasible | blocked | unclear",
+        "why": "1 sentence",
+        "evidence_or_conflict": ["…","…"],
+        "what_would_need_to_change": ["…","…"],
+        "when_to_use": "occasion / segment"
+      }}
+    ]
+  }},
+  "ingredient_audit": [
+    {{
+      "ingredient_type": "e.g., sweetener | oil | preservative | flavor system | allergen cue",
+      "insight": {{
+        "observation": "…",
+        "evidence": ["…","…"],
+        "inference": "…",
+        "implication": "…"
+      }},
+      "{my_brand}_examples": ["…","…","…"],
+      "competitor_examples": [
+        {{"entity":"…","examples":["…","…","…"]}}
+      ]
+    }}
+  ],
+  "strategic_questions": ["…","…","…"]
+
 """
     # Keep your full schema block exactly as you already had — paste it here.
     st.session_state.last_prompt_chars = len(prompt)
@@ -1192,3 +1269,4 @@ tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
 tile_row("ingredients", "Ingredient audit", "Drivers of perceived quality / cost", tile_ing)
 tile_row("mdm", "Entity normalization", "Validate mappings before presenting", tile_mdm)
+
