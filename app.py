@@ -482,7 +482,12 @@ def fetch_market_intelligence(category, gemini_key):
     all_products = []
     status_text = st.empty()
 
-        last_http = None
+    last_http = None
+
+    # 2-attempt max logic (per your spec):
+    # - Try page once
+    # - If fail: wait 15s, try same page again
+    # - If fail again: BREAK (stop pagination entirely)
     RETRY_SLEEP_SECONDS = 15
 
     for page in range(1, 6):
@@ -498,7 +503,8 @@ def fetch_market_intelligence(category, gemini_key):
             "&fields=product_name,brands,countries_tags,ingredients_text,labels_tags,unique_scans_n"
         )
 
-        page_products = None  # will stay None if both attempts fail
+        page_products = None
+        fail_reason = ""
 
         for attempt in (1, 2):
             try:
@@ -506,37 +512,42 @@ def fetch_market_intelligence(category, gemini_key):
                 last_http = r.status_code
 
                 if r.status_code != 200:
-                    st.warning(f"OpenFoodFacts HTTP {r.status_code} on page {page} (attempt {attempt}/2).")
+                    fail_reason = f"HTTP {r.status_code}"
                     if attempt == 1:
+                        st.warning(f"OpenFoodFacts {fail_reason} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
                         time.sleep(RETRY_SLEEP_SECONDS)
                         continue
                     else:
-                        st.warning("Second failure — stopping pagination (break).")
+                        st.warning(f"OpenFoodFacts {fail_reason} on page {page} again. Stopping scan (break).")
+                        st.code((r.text or "")[:600])
                         page_products = None
                         break
 
                 try:
                     payload = r.json()
                 except Exception:
-                    st.warning(f"OpenFoodFacts returned non-JSON on page {page} (attempt {attempt}/2).")
+                    fail_reason = "non-JSON response"
                     if attempt == 1:
+                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
                         time.sleep(RETRY_SLEEP_SECONDS)
                         continue
                     else:
-                        st.warning("Second failure — stopping pagination (break).")
+                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page} again. Stopping scan (break).")
+                        st.code((r.text or "")[:600])
                         page_products = None
                         break
 
                 products = payload.get("products", [])
 
-                # Treat empty products as a failure per your rule
+                # Treat empty as failure (per your spec)
                 if not products:
-                    st.warning(f"OpenFoodFacts returned 0 products on page {page} (attempt {attempt}/2).")
+                    fail_reason = "0 products"
                     if attempt == 1:
+                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
                         time.sleep(RETRY_SLEEP_SECONDS)
                         continue
                     else:
-                        st.warning("Second failure — stopping pagination (break).")
+                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page} again. Stopping scan (break).")
                         page_products = None
                         break
 
@@ -545,22 +556,52 @@ def fetch_market_intelligence(category, gemini_key):
                 break
 
             except Exception as e:
-                st.warning(f"OpenFoodFacts request failed on page {page} (attempt {attempt}/2): {e}")
+                fail_reason = str(e)
                 if attempt == 1:
+                    st.warning(f"OpenFoodFacts request failed on page {page}: {e}. Retrying in {RETRY_SLEEP_SECONDS}s…")
                     time.sleep(RETRY_SLEEP_SECONDS)
                     continue
                 else:
-                    st.warning("Second failure — stopping pagination (break).")
+                    st.warning(f"OpenFoodFacts request failed on page {page} again: {e}. Stopping scan (break).")
                     page_products = None
                     break
 
-        # If BOTH attempts failed, break OUTER loop (do not go to page 2+)
+        # If both attempts failed -> BREAK the outer page loop
         if not page_products:
             break
 
         all_products.extend(page_products)
-        time.sleep(0.45)
+        time.sleep(0.45)  # polite pacing between successful pages
 
+    status_text.empty()
+
+    df = pd.DataFrame(all_products)
+    if df.empty:
+        st.warning(f"No products returned from OpenFoodFacts for tag '{tech_tag}'. Last HTTP: {last_http}")
+        return df
+
+    df["brands"] = df["brands"].astype(str).str.strip().str.strip(",")
+    df = df[~df["brands"].isin(["nan", "None", "", "Unknown", "null"])]
+    df = df.drop_duplicates(subset=["product_name"])
+    df["unique_scans_n"] = pd.to_numeric(df.get("unique_scans_n"), errors="coerce").fillna(0)
+
+    unique_messy = df["brands"].unique().tolist()
+    with st.spinner(f"Normalizing corporate parents ({len(unique_messy)} brands)…"):
+        parent_map = get_canonical_parent_map(unique_messy, gemini_key)
+
+    df["parent_company"] = df["brands"].map(parent_map).fillna(df["brands"])
+
+    parents = df["parent_company"].dropna().unique().tolist()
+    sample_by_parent = {}
+    for p in parents:
+        tmp = df[df["parent_company"] == p].sort_values("unique_scans_n", ascending=False).head(3)
+        sample_by_parent[p] = tmp[["product_name"]].to_dict("records")
+
+    with st.spinner("Tagging entities (branded vs private label)…"):
+        type_map = classify_entity_types(parents, sample_by_parent, gemini_key)
+
+    df["entity_type"] = df["parent_company"].map(type_map).fillna("unknown")
+    return df
 
 def fetch_demographics(census_key, region):
     if not census_key:
@@ -1176,9 +1217,8 @@ RETURN JSON ONLY, EXACT SCHEMA:
     }}
   ],
   "strategic_questions": ["…","…","…"]
-
+}}
 """
-    # Keep your full schema block exactly as you already had — paste it here.
     st.session_state.last_prompt_chars = len(prompt)
 
     try:
@@ -1285,6 +1325,3 @@ tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
 tile_row("ingredients", "Ingredient audit", "Drivers of perceived quality / cost", tile_ing)
 tile_row("mdm", "Entity normalization", "Validate mappings before presenting", tile_mdm)
-
-
-
