@@ -224,6 +224,10 @@ ss_init("market_df", None)
 ss_init("demographics_df", None)
 ss_init("trends_text", "")
 
+# IMPORTANT: persist keys so locked state doesn't lose them on rerun
+ss_init("gemini_api_key", "")
+ss_init("census_api_key", "")
+
 ss_init("ui_locked", False)
 ss_init("sel_region", "Midwest")
 ss_init("sel_category", "Snack Nuts")
@@ -235,10 +239,18 @@ ss_init("sel_all_peers", [])
 
 ss_init("directive_result", None)
 
+# Debug / troubleshooting
+ss_init("last_error", "")
+ss_init("last_gemini_raw", "")
+ss_init("last_gemini_clean", "")
+ss_init("last_prompt_chars", 0)
+ss_init("last_model", "")
+
 # =============================================================================
-# 3) MDM PARENT MAPPING (LOCKED TO GEMINI-3-FLASH-PREVIEW)
+# 3) GEMINI RESPONSE TEXT SAFE EXTRACTOR
 # =============================================================================
 def _safe_response_text(resp) -> str:
+    # Prefer .text if present
     try:
         t = (resp.text or "").strip()
         if t:
@@ -246,6 +258,7 @@ def _safe_response_text(resp) -> str:
     except Exception:
         pass
 
+    # Fallback: candidates/parts
     try:
         texts = []
         for c in getattr(resp, "candidates", []) or []:
@@ -260,6 +273,57 @@ def _safe_response_text(resp) -> str:
     except Exception:
         return ""
 
+def _strip_fences(txt: str) -> str:
+    if not txt:
+        return ""
+    # Remove ```json ... ``` or ``` ... ```
+    return re.sub(r"```json\s*|```", "", txt).strip()
+
+def _extract_json_object(txt: str) -> str:
+    """
+    If the model returned extra text, attempt to isolate the first {...} block.
+    """
+    if not txt:
+        return ""
+    s = txt.strip()
+    first = s.find("{")
+    last = s.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        return s[first:last+1]
+    return s
+
+def _json_loads_with_debug(txt: str, label: str = "Gemini"):
+    """
+    Loads JSON with better error messages and stores debug artifacts.
+    """
+    if not txt or not txt.strip():
+        raise ValueError(f"{label} returned an empty string (nothing to parse as JSON).")
+
+    clean = _strip_fences(txt)
+    clean = _extract_json_object(clean)
+
+    st.session_state.last_gemini_raw = txt[:4000]
+    st.session_state.last_gemini_clean = clean[:4000]
+
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError as je:
+        # include a small snippet around the failing location
+        pos = getattr(je, "pos", None)
+        context = ""
+        if isinstance(pos, int):
+            start = max(0, pos - 160)
+            end = min(len(clean), pos + 160)
+            context = clean[start:end]
+        raise json.JSONDecodeError(
+            f"{label} did not return valid JSON. {je.msg}. Context near error:\n{context}",
+            je.doc,
+            je.pos
+        )
+
+# =============================================================================
+# 3A) MDM PARENT MAPPING (LOCKED TO GEMINI-3-FLASH-PREVIEW)
+# =============================================================================
 def get_canonical_parent_map(messy_brands, api_key):
     if not messy_brands or not api_key:
         return {}
@@ -288,6 +352,7 @@ RETURN JSON ONLY:
   ]
 }}
 """
+    last_exc = None
     for attempt in range(1, 4):
         try:
             resp = model.generate_content(prompt)
@@ -295,17 +360,23 @@ RETURN JSON ONLY:
             if not txt:
                 time.sleep(0.8 * attempt)
                 continue
-            clean_json = re.sub(r"```json\s?|```", "", txt).strip()
-            data = json.loads(clean_json)
+
+            data = _json_loads_with_debug(txt, label="MDM mapping (gemini-3-flash-preview)")
             out = {item["raw"]: item["canonical_parent"] for item in data.get("Mapping", []) if item.get("raw")}
             if out:
                 return out
             time.sleep(0.8 * attempt)
-        except Exception:
+        except Exception as e:
+            last_exc = e
             time.sleep(0.8 * attempt)
             continue
 
-    st.error("MDM Engine Error: empty/invalid response from Gemini (no text parts). Falling back to raw brands.")
+    st.error("MDM Engine Error: empty/invalid response from Gemini. Falling back to raw brands.")
+    if last_exc:
+        with st.expander("MDM debug details"):
+            st.exception(last_exc)
+            if st.session_state.last_gemini_raw:
+                st.code(st.session_state.last_gemini_raw)
     return {b: b for b in messy_brands}
 
 # =============================================================================
@@ -349,6 +420,7 @@ RETURN JSON ONLY:
   ]
 }}
 """
+    last_exc = None
     for attempt in range(1, 4):
         try:
             resp = model.generate_content(prompt)
@@ -357,8 +429,7 @@ RETURN JSON ONLY:
                 time.sleep(0.8 * attempt)
                 continue
 
-            txt = re.sub(r"```json\s?|```", "", txt).strip()
-            data = json.loads(txt)
+            data = _json_loads_with_debug(txt, label="Entity typing (gemini-3-flash-preview)")
 
             out = {}
             for row in data.get("entity_types", []):
@@ -371,9 +442,16 @@ RETURN JSON ONLY:
                 return out
 
             time.sleep(0.8 * attempt)
-        except Exception:
+        except Exception as e:
+            last_exc = e
             time.sleep(0.8 * attempt)
             continue
+
+    if last_exc:
+        with st.expander("Entity typing debug details"):
+            st.exception(last_exc)
+            if st.session_state.last_gemini_raw:
+                st.code(st.session_state.last_gemini_raw)
 
     return {p: "unknown" for p in parent_companies}
 
@@ -404,6 +482,7 @@ def fetch_market_intelligence(category, gemini_key):
     all_products = []
     status_text = st.empty()
 
+    last_http = None
     for page in range(1, 6):
         status_text.text(f"Scanning products · page {page}")
         url = (
@@ -417,17 +496,31 @@ def fetch_market_intelligence(category, gemini_key):
         )
         try:
             r = requests.get(url, headers=headers, timeout=15)
-            products = r.json().get("products", [])
+            last_http = r.status_code
+            if r.status_code != 200:
+                st.warning(f"OpenFoodFacts returned HTTP {r.status_code} on page {page}.")
+                st.code((r.text or "")[:600])
+                break
+            try:
+                payload = r.json()
+            except Exception:
+                st.warning(f"OpenFoodFacts returned non-JSON on page {page}.")
+                st.code((r.text or "")[:600])
+                break
+
+            products = payload.get("products", [])
             if not products:
                 break
             all_products.extend(products)
             time.sleep(0.45)
-        except:
+        except Exception as e:
+            st.warning(f"OpenFoodFacts request failed on page {page}: {e}")
             break
 
     status_text.empty()
     df = pd.DataFrame(all_products)
     if df.empty:
+        st.warning(f"No products returned from OpenFoodFacts for tag '{tech_tag}'. Last HTTP: {last_http}")
         return df
 
     df["brands"] = df["brands"].astype(str).str.strip().str.strip(",")
@@ -474,16 +567,24 @@ def fetch_demographics(census_key, region):
         "B09001_001E",
     )
 
+    last_exc = None
     for s_code in states:
         try:
             state_obj = us.states.lookup(s_code)
+            if not state_obj:
+                continue
             res = c.acs5.state_zipcode(vars, state_obj.fips, Census.ALL)
             all_data.extend(res)
-        except:
+        except Exception as e:
+            last_exc = e
             continue
 
     df = pd.DataFrame(all_data)
     if df.empty:
+        st.warning("Census returned no rows for the selected region/states.")
+        if last_exc:
+            with st.expander("Census debug details"):
+                st.exception(last_exc)
         return None
 
     df["population"] = pd.to_numeric(df["B01003_001E"], errors="coerce")
@@ -515,7 +616,7 @@ def process_trends(files):
         try:
             reader = PdfReader(f)
             text += "".join([(page.extract_text() or "") for page in reader.pages[:3]])
-        except:
+        except Exception:
             pass
     return text[:15000]
 
@@ -730,13 +831,20 @@ with st.sidebar:
     st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
     execute = False
-    GEMINI_API = None
-    CENSUS_API = None
     uploaded_files = None
 
+    # Always read keys from session_state (fixes locked-state break)
     if not st.session_state.ui_locked:
-        GEMINI_API = st.text_input("Gemini API Key", type="password")
-        CENSUS_API = st.text_input("Census API Key", type="password")
+        st.session_state.gemini_api_key = st.text_input(
+            "Gemini API Key",
+            type="password",
+            value=st.session_state.gemini_api_key
+        )
+        st.session_state.census_api_key = st.text_input(
+            "Census API Key",
+            type="password",
+            value=st.session_state.census_api_key
+        )
 
         st.session_state.sel_category = st.selectbox(
             "Category",
@@ -774,6 +882,24 @@ with st.sidebar:
         if st.button("Edit selections"):
             st.session_state.ui_locked = False
             st.session_state.directive_result = None
+            st.session_state.last_error = ""
+
+    # Fast troubleshoot panel (optional but super useful)
+    with st.expander("Troubleshoot (debug)", expanded=False):
+        st.write({
+            "data_fetched": st.session_state.data_fetched,
+            "ui_locked": st.session_state.ui_locked,
+            "has_gemini_key": bool(st.session_state.gemini_api_key),
+            "has_census_key": bool(st.session_state.census_api_key),
+            "last_model": st.session_state.last_model,
+            "last_prompt_chars": st.session_state.last_prompt_chars,
+        })
+        if st.session_state.last_error:
+            st.markdown("**Last error**")
+            st.code(st.session_state.last_error)
+        if st.session_state.last_gemini_clean:
+            st.markdown("**Last Gemini response (cleaned, first 1200 chars)**")
+            st.code(st.session_state.last_gemini_clean[:1200])
 
 # =============================================================================
 # 9) MAIN
@@ -783,19 +909,37 @@ st.markdown("<div class='small-muted'>One-page tiles. Click View details to open
 
 # Run scan
 if execute:
-    if not GEMINI_API or not CENSUS_API:
+    if not st.session_state.gemini_api_key or not st.session_state.census_api_key:
         st.error("Please provide both Gemini and Census API keys.")
         st.stop()
 
     with st.status("Working…", expanded=True) as status:
         st.write("Fetching demographics…")
-        st.session_state.demographics_df = fetch_demographics(CENSUS_API, st.session_state.sel_region)
+        try:
+            st.session_state.demographics_df = fetch_demographics(st.session_state.census_api_key, st.session_state.sel_region)
+        except Exception as e:
+            st.session_state.last_error = f"Census fetch failed: {e}"
+            st.error("Census fetch failed.")
+            st.exception(e)
+            st.stop()
 
         st.write("Fetching market data + normalizing entities…")
-        st.session_state.market_df = fetch_market_intelligence(st.session_state.sel_category, GEMINI_API)
+        try:
+            st.session_state.market_df = fetch_market_intelligence(st.session_state.sel_category, st.session_state.gemini_api_key)
+        except Exception as e:
+            st.session_state.last_error = f"Market scan failed: {e}"
+            st.error("Market scan failed.")
+            st.exception(e)
+            st.stop()
 
         st.write("Ingesting trend PDFs…")
-        st.session_state.trends_text = process_trends(uploaded_files)
+        try:
+            st.session_state.trends_text = process_trends(uploaded_files)
+        except Exception as e:
+            st.session_state.last_error = f"PDF ingest failed: {e}"
+            st.warning("Trend PDF ingest failed (continuing without trends).")
+            st.exception(e)
+            st.session_state.trends_text = ""
 
         st.session_state.data_fetched = True
         status.update(label="Data ready", state="complete")
@@ -847,20 +991,35 @@ else:
 st.markdown("<div class='section-label'>Directive</div>", unsafe_allow_html=True)
 c_gen1, c_gen2 = st.columns([1, 3])
 with c_gen1:
+    # Keep locked behavior: once generated, UI locks
     generate = st.button("Generate", type="primary", disabled=st.session_state.ui_locked)
 with c_gen2:
     st.markdown("<div class='small-muted'>Second-order insights (evidence → inference → implication). Includes feasibility-checked claims.</div>", unsafe_allow_html=True)
 
 # Generate directive
 if generate:
+    # Reset debug
+    st.session_state.last_error = ""
+    st.session_state.last_gemini_raw = ""
+    st.session_state.last_gemini_clean = ""
+
+    # Re-check keys at generate time (this was the silent failure before)
+    if not st.session_state.gemini_api_key:
+        st.error("Missing Gemini API key (it was lost or never set). Open 'Edit selections' and re-enter it.")
+        st.stop()
+
     branded_peers, private_label_peers, all_peers = choose_peers(m_df, my_brand, branded_n=4, pl_n=2)
     st.session_state.sel_branded_peers = branded_peers
     st.session_state.sel_private_label_peers = private_label_peers
     st.session_state.sel_all_peers = all_peers
+
+    # Lock the UI AFTER we have everything we need
     st.session_state.ui_locked = True
 
-    genai.configure(api_key=GEMINI_API)
-    model = genai.GenerativeModel("gemini-2.5-pro")
+    genai.configure(api_key=st.session_state.gemini_api_key)
+    model_name = "gemini-2.5-pro"
+    st.session_state.last_model = model_name
+    model = genai.GenerativeModel(model_name)
 
     my_evidence_txt = summarize_entity_signals(build_entity_evidence(m_df, my_brand, n=10))
     comp_evidence_txt = "\n\n".join(
@@ -926,16 +1085,35 @@ TRENDS (PDF snippets; may be empty):
 RETURN JSON ONLY, EXACT SCHEMA:
 {{ ... }}
 """
-    # (keep your JSON schema block exactly as you already had — omitted here just to shorten the message)
-    # Paste your existing schema block back in under "RETURN JSON ONLY, EXACT SCHEMA:".
+    # Keep your full schema block exactly as you already had — paste it here.
+    st.session_state.last_prompt_chars = len(prompt)
 
     try:
         with st.spinner("Generating…"):
             response = model.generate_content(prompt)
-        res_txt = re.sub(r"```json\\s?|```", "", response.text).strip()
-        st.session_state.directive_result = json.loads(res_txt)
+
+        txt = _safe_response_text(response)
+        if not txt:
+            st.session_state.last_error = "Gemini returned an empty response (no text parts)."
+            st.error("Generation failed: Gemini returned an empty response.")
+            st.write("Quick checks:")
+            st.write({
+                "model": model_name,
+                "has_key": bool(st.session_state.gemini_api_key),
+                "prompt_chars": len(prompt),
+                "has_candidates": bool(getattr(response, "candidates", None)),
+            })
+            st.stop()
+
+        st.session_state.directive_result = _json_loads_with_debug(txt, label=f"Directive generation ({model_name})")
+
     except Exception as e:
-        st.error(f"Generation failed: {e}")
+        st.session_state.last_error = str(e)
+        st.error("Generation failed.")
+        st.exception(e)
+        if st.session_state.last_gemini_clean:
+            with st.expander("Gemini response (cleaned)"):
+                st.code(st.session_state.last_gemini_clean[:4000])
         st.stop()
 
 # =============================================================================
@@ -986,7 +1164,6 @@ def tile_row(panel_key, title, subtitle, bullets):
     bullets = [b for b in (bullets or []) if str(b).strip()][:3]
     bullets_html = "".join([f"<div>• {_truncate(b, 150)}</div>" for b in bullets]) or "<div class='small-muted'>No content</div>"
 
-    # One row: big card (left) + pill button (right). No second button anywhere.
     left, right = st.columns([12, 2], vertical_alignment="top")
 
     with left:
@@ -1015,4 +1192,3 @@ tile_row("occasions", "Occasions", "Where value concentrates", tile_occ)
 tile_row("claims", "Claims strategy", "Feasible + defensible plays", tile_claims)
 tile_row("ingredients", "Ingredient audit", "Drivers of perceived quality / cost", tile_ing)
 tile_row("mdm", "Entity normalization", "Validate mappings before presenting", tile_mdm)
-
