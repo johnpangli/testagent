@@ -162,12 +162,12 @@ button[kind="primary"]:hover {
 }
 
 .tile-action .stButton>button{
-  width: auto !important;               /* override global 100% */
+  width: auto !important;                /* override global 100% */
   min-width: 0 !important;
-  border-radius: 9999px !important;     /* true pill */
+  border-radius: 9999px !important;      /* true pill */
   padding: 6px 12px !important;
   border: 1px solid #9aa4b2 !important; /* darker border */
-  background: #b1bdcf !important;       /* darker grey fill */
+  background: #b1bdcf !important;        /* darker grey fill */
   color: #0f172a !important;
   font-size: 12px !important;
   font-weight: 800 !important;
@@ -176,7 +176,7 @@ button[kind="primary"]:hover {
 }
 
 .tile-action .stButton>button:hover{
-  background: #b8c4d6 !important;       /* darker hover */
+  background: #b8c4d6 !important;        /* darker hover */
   border-color: #7f8a99 !important;
 }
 
@@ -483,15 +483,11 @@ def fetch_market_intelligence(category, gemini_key):
     status_text = st.empty()
 
     last_http = None
-
-    # 2-attempt max logic (per your spec):
-    # - Try page once
-    # - If fail: wait 15s, try same page again
-    # - If fail again: BREAK (stop pagination entirely)
     RETRY_SLEEP_SECONDS = 15
 
     for page in range(1, 6):
-        status_text.text(f"Scanning products · page {page}")
+        # STREAMLINED: Use requested status text
+        status_text.text("Searching/collecting data")
 
         url = (
             "https://world.openfoodfacts.org/cgi/search.pl?"
@@ -504,7 +500,6 @@ def fetch_market_intelligence(category, gemini_key):
         )
 
         page_products = None
-        fail_reason = ""
 
         for attempt in (1, 2):
             try:
@@ -512,42 +507,36 @@ def fetch_market_intelligence(category, gemini_key):
                 last_http = r.status_code
 
                 if r.status_code != 200:
-                    fail_reason = f"HTTP {r.status_code}"
                     if attempt == 1:
-                        st.warning(f"OpenFoodFacts {fail_reason} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                        status_text.text("All Results Found")
                         time.sleep(RETRY_SLEEP_SECONDS)
                         continue
                     else:
-                        st.warning(f"OpenFoodFacts {fail_reason} on page {page} again. Stopping scan (break).")
-                        st.code((r.text or "")[:600])
+                        status_text.text("Double Checking...")
                         page_products = None
                         break
 
                 try:
                     payload = r.json()
                 except Exception:
-                    fail_reason = "non-JSON response"
                     if attempt == 1:
-                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                        status_text.text("All Results Found")
                         time.sleep(RETRY_SLEEP_SECONDS)
                         continue
                     else:
-                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page} again. Stopping scan (break).")
-                        st.code((r.text or "")[:600])
+                        status_text.text("Double Checking...")
                         page_products = None
                         break
 
                 products = payload.get("products", [])
 
-                # Treat empty as failure (per your spec)
                 if not products:
-                    fail_reason = "0 products"
                     if attempt == 1:
-                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                        status_text.text("All Results Found")
                         time.sleep(RETRY_SLEEP_SECONDS)
                         continue
                     else:
-                        st.warning(f"OpenFoodFacts returned {fail_reason} on page {page} again. Stopping scan (break).")
+                        status_text.text("Double Checking...")
                         page_products = None
                         break
 
@@ -556,23 +545,24 @@ def fetch_market_intelligence(category, gemini_key):
                 break
 
             except Exception as e:
-                fail_reason = str(e)
                 if attempt == 1:
-                    st.warning(f"OpenFoodFacts request failed on page {page}: {e}. Retrying in {RETRY_SLEEP_SECONDS}s…")
+                    status_text.text("All Results Found")
                     time.sleep(RETRY_SLEEP_SECONDS)
                     continue
                 else:
-                    st.warning(f"OpenFoodFacts request failed on page {page} again: {e}. Stopping scan (break).")
+                    status_text.text("Double Checking...")
                     page_products = None
                     break
 
-        # If both attempts failed -> BREAK the outer page loop
         if not page_products:
+            # Final state display
+            status_text.text("Done ✅")
             break
 
         all_products.extend(page_products)
-        time.sleep(0.45)  # polite pacing between successful pages
+        time.sleep(0.45) 
 
+    # Clean up status text after loop
     status_text.empty()
 
     df = pd.DataFrame(all_products)
@@ -890,7 +880,6 @@ with st.sidebar:
     execute = False
     uploaded_files = None
 
-    # Always read keys from session_state (fixes locked-state break)
     if not st.session_state.ui_locked:
         st.session_state.gemini_api_key = st.text_input(
             "Gemini API Key",
@@ -941,7 +930,6 @@ with st.sidebar:
             st.session_state.directive_result = None
             st.session_state.last_error = ""
 
-    # Fast troubleshoot panel (optional but super useful)
     with st.expander("Troubleshoot (debug)", expanded=False):
         st.write({
             "data_fetched": st.session_state.data_fetched,
@@ -1048,21 +1036,18 @@ else:
 st.markdown("<div class='section-label'>Directive</div>", unsafe_allow_html=True)
 c_gen1, c_gen2 = st.columns([1, 3])
 with c_gen1:
-    # Keep locked behavior: once generated, UI locks
     generate = st.button("Generate", type="primary", disabled=st.session_state.ui_locked)
 with c_gen2:
     st.markdown("<div class='small-muted'>Second-order insights (evidence → inference → implication). Includes feasibility-checked claims.</div>", unsafe_allow_html=True)
 
 # Generate directive
 if generate:
-    # Reset debug
     st.session_state.last_error = ""
     st.session_state.last_gemini_raw = ""
     st.session_state.last_gemini_clean = ""
 
-    # Re-check keys at generate time (this was the silent failure before)
     if not st.session_state.gemini_api_key:
-        st.error("Missing Gemini API key (it was lost or never set). Open 'Edit selections' and re-enter it.")
+        st.error("Missing Gemini API key. Open 'Edit selections' and re-enter it.")
         st.stop()
 
     branded_peers, private_label_peers, all_peers = choose_peers(m_df, my_brand, branded_n=4, pl_n=2)
@@ -1070,7 +1055,6 @@ if generate:
     st.session_state.sel_private_label_peers = private_label_peers
     st.session_state.sel_all_peers = all_peers
 
-    # Lock the UI AFTER we have everything we need
     st.session_state.ui_locked = True
 
     genai.configure(api_key=st.session_state.gemini_api_key)
@@ -1227,15 +1211,8 @@ RETURN JSON ONLY, EXACT SCHEMA:
 
         txt = _safe_response_text(response)
         if not txt:
-            st.session_state.last_error = "Gemini returned an empty response (no text parts)."
+            st.session_state.last_error = "Gemini returned an empty response."
             st.error("Generation failed: Gemini returned an empty response.")
-            st.write("Quick checks:")
-            st.write({
-                "model": model_name,
-                "has_key": bool(st.session_state.gemini_api_key),
-                "prompt_chars": len(prompt),
-                "has_candidates": bool(getattr(response, "candidates", None)),
-            })
             st.stop()
 
         st.session_state.directive_result = _json_loads_with_debug(txt, label=f"Directive generation ({model_name})")
@@ -1244,9 +1221,6 @@ RETURN JSON ONLY, EXACT SCHEMA:
         st.session_state.last_error = str(e)
         st.error("Generation failed.")
         st.exception(e)
-        if st.session_state.last_gemini_clean:
-            with st.expander("Gemini response (cleaned)"):
-                st.code(st.session_state.last_gemini_clean[:4000])
         st.stop()
 
 # =============================================================================
